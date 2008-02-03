@@ -23,6 +23,7 @@
 #include <netpacket/packet.h>
 #include <net/ethernet.h>
 
+#include "libenetaddr.h"
 
 
 /*
@@ -163,6 +164,7 @@ void print_rxed_dgrams(int *sockfd)
 	unsigned char rxed_pkt_type;
 	unsigned int rxed_pkt_len;
 	unsigned char srcmac[ETH_ALEN];
+	char srcmacpbuf[20];
 
 	int i,j;
 
@@ -190,6 +192,11 @@ void print_rxed_dgrams(int *sockfd)
                         break;
 
 		}
+
+		enet_ntop(srcmac, ENET_NTOP_UNIX, srcmacpbuf,
+			sizeof(srcmacpbuf));
+		printf("Packet source: %s\n", srcmacpbuf);
+
 
 	}
 

@@ -1,4 +1,5 @@
 
+#include <stdio.h>
 #include <stdint.h>
 #include <string.h>
 #include <ctype.h>
@@ -58,7 +59,9 @@ static int hexchar2bin(int i)
 
 }
 
-
+/*
+ * Ethernet address Presentation to Network function
+ */
 enum enet_pton_ok enet_pton(const char *enet_paddr,
 	uint8_t enet_addr[ETH_ALEN])
 {
@@ -117,5 +120,100 @@ enum enet_pton_ok enet_pton(const char *enet_paddr,
 	}
 
 	return ENET_PTON_GOOD;
+
+}
+
+
+/*
+ * Ethernet address Network to Presentation function
+ */
+enum enet_ntop_ok enet_ntop(const uint8_t enet_addr[ETH_ALEN],
+	const enum enet_ntop_format enet_ntop_fmt,
+	char *buf, const unsigned int buf_size)
+{
+
+
+	switch (enet_ntop_fmt) {
+	case ENET_NTOP_UNIX:
+		if (buf_size < 18)
+			return ENET_NTOP_BADBUFLEN;
+		snprintf(buf, buf_size, "%02x:%02x:%02x:%02x:%02x:%02x",
+			enet_addr[0],
+			enet_addr[1],
+			enet_addr[2],
+			enet_addr[3],
+			enet_addr[4],
+			enet_addr[5]);
+		break;
+	case ENET_NTOP_SUNUNIX:
+		if (buf_size < 18)
+			return ENET_NTOP_BADBUFLEN;
+		snprintf(buf, buf_size, "%x:%x:%x:%x:%x:%x",
+			enet_addr[0],
+			enet_addr[1],
+			enet_addr[2],
+			enet_addr[3],
+			enet_addr[4],
+			enet_addr[5]);
+		break;
+	case ENET_NTOP_CISCO:
+		if (buf_size < 15)
+			return ENET_NTOP_BADBUFLEN;
+		snprintf(buf, buf_size, "%02x%02x.%02x%02x.%02x%02x",
+			enet_addr[0],
+			enet_addr[1],
+			enet_addr[2],
+			enet_addr[3],
+			enet_addr[4],
+			enet_addr[5]);
+		break;
+	case ENET_NTOP_802CANONLC:
+		if (buf_size < 18)
+			return ENET_NTOP_BADBUFLEN;
+		snprintf(buf, buf_size, "%02x-%02x-%02x-%02x-%02x-%02x",
+			enet_addr[0],
+			enet_addr[1],
+			enet_addr[2],
+			enet_addr[3],
+			enet_addr[4],
+			enet_addr[5]);
+		break;
+	case ENET_NTOP_PACKED:
+		if (buf_size < 12)
+			return ENET_NTOP_BADBUFLEN;
+		snprintf(buf, buf_size, "%02X%02X%02X%02X%02X%02X",
+			enet_addr[0],
+			enet_addr[1],
+			enet_addr[2],
+			enet_addr[3],
+			enet_addr[4],
+			enet_addr[5]);
+		break;
+	case ENET_NTOP_PACKEDLC:
+		if (buf_size < 12)
+			return ENET_NTOP_BADBUFLEN;
+		snprintf(buf, buf_size, "%02x%02x%02x%02x%02x%02x",
+			enet_addr[0],
+			enet_addr[1],
+			enet_addr[2],
+			enet_addr[3],
+			enet_addr[4],
+			enet_addr[5]);
+		break;
+	case ENET_NTOP_802CANON:
+	default:
+		if (buf_size < 18)
+			return ENET_NTOP_BADBUFLEN;
+		snprintf(buf, buf_size, "%02X-%02X-%02X-%02X-%02X-%02X",
+			enet_addr[0],
+			enet_addr[1],
+			enet_addr[2],
+			enet_addr[3],
+			enet_addr[4],
+			enet_addr[5]);
+		break;
+	}
+
+	return ENET_NTOP_GOOD;
 
 }
