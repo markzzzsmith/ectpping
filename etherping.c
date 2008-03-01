@@ -8,7 +8,6 @@
  */
 
 /* #define DEBUG 1 */
-#define DEBUG 1 
 
 
 #include <stdio.h>
@@ -171,11 +170,6 @@ enum CLOSE_RX_SKT close_rx_socket(int *rx_sockfd);
  */
 
 /*
- * Changed to SIGTERM handler to tell threads to finish
- */
-int quit_program;
-
-/*
  * tx & rx thread handles
  */
 pthread_t tx_thread_hdl;
@@ -206,8 +200,7 @@ int main(int argc, char *argv[])
 	prepare_thread_args(&tx_thread_args, &rx_thread_args, &prog_parms,
 		&tx_sockfd, &rx_sockfd);
 
-	//quit_program = 0;
-	//set_sigterm_hdlr(&sigterm_action);
+	set_sigterm_hdlr(&sigterm_action);
 
 	/*
 	 * Start threads
@@ -255,9 +248,8 @@ void sigterm_hdlr(int signum)
 
 	debug_fn_name(__func__);
 
-	shutdown(rx_sockfd, SHUT_RD);	
-
-	quit_program = 1;
+	pthread_cancel(tx_thread_hdl);
+	pthread_cancel(rx_thread_hdl);
 
 }
 
@@ -442,6 +434,11 @@ void tx_thread(struct tx_thread_arguments *tx_thread_args)
 
 	debug_fn_name(__func__);
 
+	for ( ; ; ) {
+		printf("emit ECTP frame\n");
+		sleep(1);
+	}
+
 }
 
 
@@ -529,36 +526,32 @@ void print_rxed_frames(int *rx_sockfd)
 
 	debug_fn_name(__func__);
 
-	printf("quit_program = %d\n", quit_program);
-
-	while (quit_program == 0) {
+	for ( ; ; ) {
 
 		rx_new_frame(rx_sockfd, pkt_buf, sizeof(pkt_buf),
 			&rxed_pkt_type, &rxed_pkt_len, srcmac);
 
 		switch (rxed_pkt_type) {
 		case PACKET_HOST:
-			printf("PACKET_HOST\n");
+			printf("PACKET_HOST, ");
 			break;
 		case PACKET_BROADCAST:
-			printf("PACKET_BROADCAST\n");
+			printf("PACKET_BROADCAST, ");
 			break;
 		case PACKET_MULTICAST:
-			printf("PACKET_MULTICAST\n");
+			printf("PACKET_MULTICAST, ");
                         break;
 		case PACKET_OTHERHOST:
-			printf("PACKET_OTHERHOST\n");
+			printf("PACKET_OTHERHOST, ");
                         break;
 
 		}
 
 		enet_ntop(srcmac, ENET_NTOP_UNIX, srcmacpbuf,
 			sizeof(srcmacpbuf));
-		printf("Packet source: %s\n", srcmacpbuf);
+		printf("Packet source: %s, ", srcmacpbuf);
 
-		printf("Packet length: %d\n\n", rxed_pkt_len);
-
-	printf("quit_program = %d\n", quit_program);
+		printf("Packet length: %d\n", rxed_pkt_len);
 
 	}
 
@@ -628,6 +621,7 @@ enum CLOSE_TX_SKT close_tx_socket(int *tx_sockfd)
 	return CLOSE_TX_SKT_GOOD;
 
 }
+
 
 /*
  * Close the receive socket
