@@ -5,6 +5,8 @@
 
 #include <net/ethernet.h>
 
+#define ENET_PADDR_MAXSZ 18
+
 enum enet_pton_ok {
 	ENET_PTON_GOOD,
 	ENET_PTON_BADLENGTH,

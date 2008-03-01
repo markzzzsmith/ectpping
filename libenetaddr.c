@@ -3,19 +3,22 @@
 #include <stdint.h>
 #include <string.h>
 #include <ctype.h>
+#include <stdbool.h>
 
 #include <net/ethernet.h>
 
 #include "libenetaddr.h"
 
 
-#define ENET_PADDR_LEN 17
-
 static int ishex(unsigned char i);
 static int isseperator(unsigned char i);
 static int hexchar2bin(int i);
 
 
+/*
+ * Is the supplied character an ethernet MAC address
+ * seperator?
+ */
 static int isseperator(unsigned char i)
 {
 
@@ -29,6 +32,10 @@ static int isseperator(unsigned char i)
 }
 
 
+/*
+ * Does supplied character fall within hexadecimal
+ * character range?
+ */
 static int ishex(unsigned char i)
 {
 
@@ -42,6 +49,10 @@ static int ishex(unsigned char i)
 
 }
 
+
+/*
+ * Convert hexidecimal character to binary value equivalent
+ */
 static int hexchar2bin(int i)
 {
 
@@ -59,24 +70,25 @@ static int hexchar2bin(int i)
 
 }
 
+
 /*
  * Ethernet address Presentation to Network function
  */
-enum enet_pton_ok enet_pton(const char *enet_paddr,
-	uint8_t enet_addr[ETH_ALEN])
+enum enet_pton_ok enet_pton(
+				const char *enet_paddr,
+				uint8_t enet_addr[ETH_ALEN])
 {
 	int i,j;
-	char tmpenet_paddr[ENET_PADDR_LEN+1];
+	char tmpenet_paddr[ENET_PADDR_MAXSZ];
 
 
-	memcpy(tmpenet_paddr, enet_paddr, ENET_PADDR_LEN);	
-	tmpenet_paddr[ENET_PADDR_LEN] = 0;
+	memcpy(tmpenet_paddr, enet_paddr, ENET_PADDR_MAXSZ);	
+	tmpenet_paddr[ENET_PADDR_MAXSZ-1] = 0;
 
-	if (strlen(tmpenet_paddr) != ENET_PADDR_LEN) { 
+	if (strlen(tmpenet_paddr) != (ENET_PADDR_MAXSZ-1)) 
 		return ENET_PTON_BADLENGTH;
-	}
 
-	for (i = 0; i < ENET_PADDR_LEN; i++) {
+	for (i = 0; i < (ENET_PADDR_MAXSZ-1); i++) {
 
 		if ( (i % 3) != 2 ) { /* seperator every 3 chars */
 			if (ishex(tmpenet_paddr[i]) != 1 ) {
@@ -97,7 +109,7 @@ enum enet_pton_ok enet_pton(const char *enet_paddr,
 	 */
 
 	j = 0;
-	for (i = 0; i < ENET_PADDR_LEN; i++) {
+	for (i = 0; i < (ENET_PADDR_MAXSZ-1); i++) {
 
 		if ( (i % 3) != 2) { /* skip seperator chars */
 
@@ -127,9 +139,10 @@ enum enet_pton_ok enet_pton(const char *enet_paddr,
 /*
  * Ethernet address Network to Presentation function
  */
-enum enet_ntop_ok enet_ntop(const uint8_t enet_addr[ETH_ALEN],
-	const enum enet_ntop_format enet_ntop_fmt,
-	char *buf, const unsigned int buf_size)
+enum enet_ntop_ok enet_ntop(
+				const uint8_t enet_addr[ETH_ALEN],
+				const enum enet_ntop_format enet_ntop_fmt,
+				char *buf, const unsigned int buf_size)
 {
 
 

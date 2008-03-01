@@ -6,5 +6,5 @@ libenetaddr.o : libenetaddr.h libenetaddr.c
 	gcc -Wall -c libenetaddr.c
 
 clean:
-	rm -f etherping
+	rm -f etherping libenetaddr.o
 
