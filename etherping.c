@@ -18,6 +18,7 @@
 #include <pthread.h>
 #include <sys/ioctl.h>
 #include <signal.h>
+#include <sys/time.h>
 
 #include <sys/socket.h>
 #include <arpa/inet.h>
@@ -79,9 +80,11 @@ struct rx_thread_arguments {
 
 void debug_fn_name(const char *s);
 
-void sigterm_hdlr(int signum);
+void setup_sigterm_hdlr(struct sigaction *sigterm_action);
 
 void set_sigterm_hdlr(struct sigaction *sigterm_action);
+
+void sigterm_hdlr(int signum);
 
 enum GET_PROG_PARMS {
 	GET_PROG_PARMS_GOOD,
@@ -170,23 +173,26 @@ enum CLOSE_RX_SKT close_rx_socket(int *rx_sockfd);
  */
 
 /*
+ * Toggled by sigterm, indicating to rx thread to stop
+ */
+int quit_program;
+
+/*
  * tx & rx thread handles
  */
 pthread_t tx_thread_hdl;
 pthread_t rx_thread_hdl;
 
-/*
- * tx & rx PF_PACKET socket handles
- */
-int tx_sockfd, rx_sockfd;
 
 /*
  * Functions
  */
+
 int main(int argc, char *argv[])
 {
 	struct sigaction sigterm_action;
 	struct program_parameters prog_parms;
+	int tx_sockfd, rx_sockfd;
 	struct tx_thread_arguments tx_thread_args;
 	struct rx_thread_arguments rx_thread_args;
 
@@ -200,19 +206,12 @@ int main(int argc, char *argv[])
 	prepare_thread_args(&tx_thread_args, &rx_thread_args, &prog_parms,
 		&tx_sockfd, &rx_sockfd);
 
-	set_sigterm_hdlr(&sigterm_action);
+	setup_sigterm_hdlr(&sigterm_action);
 
-	/*
-	 * Start threads
-	 */
 	pthread_create(&tx_thread_hdl, NULL, (void *)tx_thread,
 		&tx_thread_args);
 	pthread_create(&rx_thread_hdl, NULL, (void *)rx_thread,
 		&rx_thread_args);
-
-	/*
-	 * Stop program exiting until threads stop
-	 */
 	pthread_join(tx_thread_hdl, NULL);
 	pthread_join(rx_thread_hdl, NULL);
 
@@ -240,16 +239,16 @@ void debug_fn_name(const char *s)
 
 
 /*
- * Called upon SIGTERM
+ * Setup things needed for the sigterm handler
  */
-void sigterm_hdlr(int signum)
+void setup_sigterm_hdlr(struct sigaction *sigterm_action)
 {
 
 
 	debug_fn_name(__func__);
 
-	pthread_cancel(tx_thread_hdl);
-	pthread_cancel(rx_thread_hdl);
+	quit_program = 0;
+	set_sigterm_hdlr(sigterm_action);
 
 }
 
@@ -268,6 +267,22 @@ void set_sigterm_hdlr(struct sigaction *sigterm_action)
 	sigterm_action->sa_flags = 0;
 
 	sigaction(SIGINT, sigterm_action, NULL);
+
+}
+
+
+/*
+ * Called upon SIGTERM
+ */
+void sigterm_hdlr(int signum)
+{
+
+
+	debug_fn_name(__func__);
+
+	quit_program = 1;
+
+	pthread_cancel(tx_thread_hdl);
 
 }
 
@@ -434,9 +449,9 @@ void tx_thread(struct tx_thread_arguments *tx_thread_args)
 
 	debug_fn_name(__func__);
 
-	for ( ; ; ) {
+	while (quit_program == 0) {
 		printf("emit ECTP frame\n");
-		sleep(1);
+		sleep(5);
 	}
 
 }
@@ -522,36 +537,53 @@ void print_rxed_frames(int *rx_sockfd)
 	unsigned int rxed_pkt_len;
 	unsigned char srcmac[ETH_ALEN];
 	char srcmacpbuf[ENET_PADDR_MAXSZ];
+	fd_set select_fd_set;
+	struct timeval select_tout;
+	int select_result;
 
 
 	debug_fn_name(__func__);
 
-	for ( ; ; ) {
 
-		rx_new_frame(rx_sockfd, pkt_buf, sizeof(pkt_buf),
-			&rxed_pkt_type, &rxed_pkt_len, srcmac);
+	while (quit_program == 0) {
 
-		switch (rxed_pkt_type) {
-		case PACKET_HOST:
-			printf("PACKET_HOST, ");
-			break;
-		case PACKET_BROADCAST:
-			printf("PACKET_BROADCAST, ");
-			break;
-		case PACKET_MULTICAST:
-			printf("PACKET_MULTICAST, ");
-                        break;
-		case PACKET_OTHERHOST:
-			printf("PACKET_OTHERHOST, ");
-                        break;
+		FD_ZERO(&select_fd_set);
+		FD_SET(*rx_sockfd, &select_fd_set);
+
+		select_tout.tv_sec = 0;
+		select_tout.tv_usec = 100000; 
+
+		/* need to error check select result */
+		select_result = select(*rx_sockfd+1, &select_fd_set, NULL,
+			NULL, &select_tout);
+
+		if (select_result > 0) {
+		
+			rx_new_frame(rx_sockfd, pkt_buf, sizeof(pkt_buf),
+				&rxed_pkt_type, &rxed_pkt_len, srcmac);
+
+			switch (rxed_pkt_type) {
+			case PACKET_HOST:
+				printf("PACKET_HOST, ");
+				break;
+			case PACKET_BROADCAST:
+				printf("PACKET_BROADCAST, ");
+				break;
+			case PACKET_MULTICAST:
+				printf("PACKET_MULTICAST, ");
+				break;
+			case PACKET_OTHERHOST:
+				printf("PACKET_OTHERHOST, ");
+				break;
+			}
+
+			enet_ntop(srcmac, ENET_NTOP_UNIX, srcmacpbuf,
+				sizeof(srcmacpbuf));
+			printf("Packet source: %s, ", srcmacpbuf);
+	
+			printf("Packet length: %d\n", rxed_pkt_len);
 
 		}
-
-		enet_ntop(srcmac, ENET_NTOP_UNIX, srcmacpbuf,
-			sizeof(srcmacpbuf));
-		printf("Packet source: %s, ", srcmacpbuf);
-
-		printf("Packet length: %d\n", rxed_pkt_len);
 
 	}
 
@@ -559,7 +591,7 @@ void print_rxed_frames(int *rx_sockfd)
 
 
 /*
- * Waits to receive a new ECTP frames
+ * Receive a pending ECTP frame
  */
 void rx_new_frame(
 				int *rx_sockfd,
@@ -580,7 +612,7 @@ void rx_new_frame(
 	sa_ll_len = sizeof(sa_ll);
 
 	*pkt_len = recvfrom(*rx_sockfd, pkt_buf, pkt_buf_sz,
-		0, (struct sockaddr *) &sa_ll,
+		MSG_DONTWAIT, (struct sockaddr *) &sa_ll,
 		(socklen_t *) &sa_ll_len );
 
 	memcpy(srcmac, sa_ll.sll_addr, ETH_ALEN);
