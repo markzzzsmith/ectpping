@@ -5,6 +5,9 @@ etherping : etherping.c libenetaddr.o
 libenetaddr.o : libenetaddr.h libenetaddr.c
 	gcc -Wall -c libenetaddr.c
 
+libectp.o : ectp.h libectp.h libectp.c
+	gcc -Wall -c libectp.c
+
 clean:
 	rm -f etherping libenetaddr.o
 

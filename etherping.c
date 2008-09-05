@@ -8,10 +8,12 @@
  */
 
 /* #define DEBUG 1 */
+#define DEBUG 1 
 
 
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 #include <unistd.h>
 #include <sys/types.h>
@@ -279,6 +281,9 @@ void sigterm_hdlr(int signum)
 
 
 	debug_fn_name(__func__);
+
+	if (quit_program) /* SIGTERM received twice, hard exit program */
+		exit(0);
 
 	quit_program = 1;
 
@@ -619,6 +624,23 @@ void rx_new_frame(
 
 	*pkt_type = sa_ll.sll_pkttype;	
 	
+}
+
+
+/*
+ * print the received ECTP frame
+ */
+void print_rxed_ectp_frame(
+				unsigned char *pkt_buf,
+				const unsigned int pkt_buf_sz,
+				unsigned char pkt_type,
+				unsigned int pkt_len,
+				unsigned char *srcmac)
+{
+
+
+
+
 }
 
 

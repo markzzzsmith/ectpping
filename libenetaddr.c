@@ -10,8 +10,8 @@
 #include "libenetaddr.h"
 
 
-static int ishex(unsigned char i);
-static int isseperator(unsigned char i);
+static bool ishex(unsigned char i);
+static bool isseperator(unsigned char i);
 static int hexchar2bin(int i);
 
 
@@ -19,14 +19,14 @@ static int hexchar2bin(int i);
  * Is the supplied character an ethernet MAC address
  * seperator?
  */
-static int isseperator(unsigned char i)
+static bool isseperator(unsigned char i)
 {
 
 
 	if ( (i == ':') || (i == '-') ) {
-		return 1;
+		return true;
 	} else {
-		return 0;
+		return false;
 	}
 
 }
@@ -36,15 +36,15 @@ static int isseperator(unsigned char i)
  * Does supplied character fall within hexadecimal
  * character range?
  */
-static int ishex(unsigned char i)
+static bool ishex(unsigned char i)
 {
 
 
 	if ( (i >= '0' && i <= '9') || (i >= 'a' && i <= 'f')
 		|| (i >= 'A' && i <= 'F') ) {
-		return 1;
+		return true;
 	} else {
-		return 0;
+		return false;
 	}
 
 }
@@ -74,9 +74,8 @@ static int hexchar2bin(int i)
 /*
  * Ethernet address Presentation to Network function
  */
-enum enet_pton_ok enet_pton(
-				const char *enet_paddr,
-				uint8_t enet_addr[ETH_ALEN])
+enum enet_pton_ok enet_pton(const char *enet_paddr,
+			    uint8_t enet_addr[ETH_ALEN])
 {
 	int i,j;
 	char tmpenet_paddr[ENET_PADDR_MAXSZ];

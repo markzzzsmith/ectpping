@@ -15,7 +15,7 @@ enum enet_pton_ok {
 };
 
 enum enet_pton_ok enet_pton(const char *enet_paddr,
-	uint8_t enet_addr[ETH_ALEN]);
+			    uint8_t enet_addr[ETH_ALEN]);
 
 
 enum enet_ntop_format {
@@ -34,7 +34,7 @@ enum enet_ntop_ok {
 };
 
 enum enet_ntop_ok enet_ntop(const uint8_t enet_addr[ETH_ALEN],
-	const enum enet_ntop_format enet_ntop_fmt,
-	char *buf, const unsigned int buf_size);
+			    const enum enet_ntop_format enet_ntop_fmt,
+			    char *buf, const unsigned int buf_size);
 
 #endif /* _ENETADDR_H_ */
