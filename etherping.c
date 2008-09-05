@@ -8,7 +8,6 @@
  */
 
 /* #define DEBUG 1 */
-#define DEBUG 1 
 
 
 #include <stdio.h>
@@ -113,7 +112,14 @@ enum PROCESS_PROG_OPTS {
 enum PROCESS_PROG_OPTS process_prog_opts(struct program_options *prog_opts,
 					 struct program_parameters *prog_parms);
 
-unsigned int get_ifindex(char iface[IFNAMSIZ]);
+
+enum GET_IFINDEX {
+	GET_IFINDEX_GOOD,
+	GET_IFINDEX_BADSOCKET,
+	GET_IFINDEX_BADIFACE
+};
+enum GET_IFINDEX get_ifindex(const char iface[IFNAMSIZ], int *ifindex);
+
 
 void open_sockets(int *tx_sockfd, int *rx_sockfd, const int ifindex);
 
@@ -349,18 +355,16 @@ enum GET_CLI_OPTS get_cli_opts(const int argc,
 enum PROCESS_PROG_OPTS process_prog_opts(struct program_options *prog_opts,
 					 struct program_parameters *prog_parms)
 {
-	int i;
 
 
 	debug_fn_name(__func__);
 
 	memset(prog_parms, 0, sizeof(struct program_parameters));
 
-	i = get_ifindex(prog_opts->iface);
-	if (i)
-		prog_parms->ifindex = i;
-	else
-		return PROCESS_PROG_OPTS_BAD;
+	if (get_ifindex(prog_opts->iface, &prog_parms->ifindex)
+		!= GET_IFINDEX_GOOD)
+			return PROCESS_PROG_OPTS_BAD;
+
 
 	return PROCESS_PROG_OPTS_GOOD;
 
@@ -370,36 +374,43 @@ enum PROCESS_PROG_OPTS process_prog_opts(struct program_options *prog_opts,
 /*
  * Routine to get the ifindex of the supplied interface name
  */
-unsigned int get_ifindex(char iface[IFNAMSIZ])
+enum GET_IFINDEX get_ifindex(const char iface[IFNAMSIZ], int *ifindex)
 {
 	int sockfd;
 	struct ifreq ifr;
-	int ifindex;
+	int ioctlret;
 
 
 	debug_fn_name(__func__);
 
 	sockfd = socket(PF_PACKET, SOCK_RAW, 0);
 	if (sockfd == -1)
-		return 0;
+		return GET_IFINDEX_BADSOCKET;
 
 	memset(&ifr, 0, sizeof(struct ifreq));
 
 	strncpy(ifr.ifr_name, iface, IFNAMSIZ);
 	ifr.ifr_name[IFNAMSIZ-1] = 0;
 
-	ifindex = ioctl(sockfd, SIOCGIFINDEX, &ifr);
+	ioctlret = ioctl(sockfd, SIOCGIFINDEX, &ifr);
 
 	if (close(sockfd) == -1)
-		return 0;
+		return GET_IFINDEX_BADSOCKET;
 	
-	if (ifindex != -1)
-		return ifr.ifr_ifindex;
-	else
-		return 0;
-
+	if (ioctlret != -1) {
+		*ifindex = ifr.ifr_ifindex;
+		return GET_IFINDEX_GOOD;
+	} else {
+		return GET_IFINDEX_BADIFACE;
+	}
 
 }
+
+
+/*
+ * Routine to get the mac address for an interface
+ */
+
 
 
 /*
