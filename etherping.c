@@ -92,28 +92,26 @@ enum GET_PROG_PARMS {
 	GET_PROG_PARMS_GOOD,
 	GET_PROG_PARMS_BADIFINDEX,
 };
-enum GET_PROG_PARMS get_prog_parms(
-				const int argc,
-				char *argv[],
-				struct program_parameters *prog_parms);
+enum GET_PROG_PARMS get_prog_parms(const int argc,
+				   char *argv[],
+				   struct program_parameters *prog_parms);
+
 
 enum GET_CLI_OPTS {
 	GET_CLI_OPTS_GOOD,
 	GET_CLI_OPTS_BAD
 };
-enum GET_CLI_OPTS get_cli_opts(
-				const int argc,
-				char *argv[],
-				struct program_options *prog_opts);
+enum GET_CLI_OPTS get_cli_opts(const int argc,
+			       char *argv[],
+			       struct program_options *prog_opts);
 
 
 enum PROCESS_PROG_OPTS {
 	PROCESS_PROG_OPTS_GOOD,
 	PROCESS_PROG_OPTS_BAD
 };
-enum PROCESS_PROG_OPTS process_prog_opts(
-				struct program_options *prog_opts,
-				struct program_parameters *prog_parms);
+enum PROCESS_PROG_OPTS process_prog_opts(struct program_options *prog_opts,
+					 struct program_parameters *prog_parms);
 
 unsigned int get_ifindex(char iface[IFNAMSIZ]);
 
@@ -127,6 +125,7 @@ enum OPEN_TX_SKT {
 };
 enum OPEN_TX_SKT open_tx_socket(int *sockfd, const int tx_ifindex);
 
+
 enum OPEN_RX_SKT {
 	OPEN_RX_SKT_GOOD,
 	OPEN_RX_SKT_BADSOCKET, 		/* socket() call failed */
@@ -134,12 +133,12 @@ enum OPEN_RX_SKT {
 };
 enum OPEN_RX_SKT open_rx_socket(int *sockfd, const int rx_ifindex);
 
-void prepare_thread_args(
-				struct tx_thread_arguments *tx_thread_args,
-				struct rx_thread_arguments *rx_thread_args,
-				struct program_parameters *prog_parms,
-				int *tx_sockfd,
-				int *rx_sockfd);
+
+void prepare_thread_args(struct tx_thread_arguments *tx_thread_args,
+			 struct rx_thread_arguments *rx_thread_args,
+			 struct program_parameters *prog_parms,
+			 int *tx_sockfd,
+			 int *rx_sockfd);
 
 void tx_thread(struct tx_thread_arguments *tx_thread_args);
 
@@ -147,13 +146,12 @@ void rx_thread(struct rx_thread_arguments *rx_thread_args);
 
 void print_rxed_frames(int *rx_sockfd);
 
-void rx_new_frame(
-				int *sockfd,
-				unsigned char *pkt_buf,
-				const unsigned int pkt_buf_sz,
-				unsigned char *pkt_type,
-				unsigned int *pkt_len,
-				unsigned char *srcmac);
+void rx_new_frame(int *sockfd,
+		  unsigned char *pkt_buf,
+		  const unsigned int pkt_buf_sz,
+		  unsigned char *pkt_type,
+		  unsigned int *pkt_len,
+		  unsigned char *srcmac);
 
 void close_sockets(int *tx_sockfd, int *rx_sockfd);
 
@@ -162,6 +160,7 @@ enum CLOSE_TX_SKT {
 	CLOSE_TX_SKT_BAD,
 };
 enum CLOSE_TX_SKT close_tx_socket(int *tx_sockfd);
+
 
 enum CLOSE_RX_SKT {
 	CLOSE_RX_SKT_GOOD,
@@ -296,10 +295,9 @@ void sigterm_hdlr(int signum)
  * Routine to collect program parameters from various sources e.g. cli
  * options, .rc file
  */
-enum GET_PROG_PARMS get_prog_parms(
-	const int argc,
-	char *argv[],
-	struct program_parameters *prog_parms)
+enum GET_PROG_PARMS get_prog_parms(const int argc,
+				   char *argv[],
+				   struct program_parameters *prog_parms)
 {
 	struct program_options prog_opts;
 
@@ -320,10 +318,9 @@ enum GET_PROG_PARMS get_prog_parms(
 /*
  * Routine to collect program options from *argv[];
  */
-enum GET_CLI_OPTS get_cli_opts(
-				const int argc,
-				char *argv[],
-				struct program_options *prog_opts)
+enum GET_CLI_OPTS get_cli_opts(const int argc,
+			       char *argv[],
+			       struct program_options *prog_opts)
 {
 	int opt;
 
@@ -349,9 +346,8 @@ enum GET_CLI_OPTS get_cli_opts(
  * Routine to convert collected program options into internal program
  * parameters
  */
-enum PROCESS_PROG_OPTS process_prog_opts(
-				struct program_options *prog_opts,
-				struct program_parameters *prog_parms)
+enum PROCESS_PROG_OPTS process_prog_opts(struct program_options *prog_opts,
+					 struct program_parameters *prog_parms)
 {
 	int i;
 
@@ -425,12 +421,11 @@ void open_sockets(int *tx_sockfd, int *rx_sockfd, const int ifindex)
 /*
  * Prepares the argument structures passed to the tx and rx threads
  */
-void prepare_thread_args(
-				struct tx_thread_arguments *tx_thread_args,
-				struct rx_thread_arguments *rx_thread_args,
-				struct program_parameters *prog_parms,
-				int *tx_sockfd,
-				int *rx_sockfd)
+void prepare_thread_args(struct tx_thread_arguments *tx_thread_args,
+			 struct rx_thread_arguments *rx_thread_args,
+			 struct program_parameters *prog_parms,
+			 int *tx_sockfd,
+			 int *rx_sockfd)
 {
 
 
@@ -533,7 +528,7 @@ enum OPEN_RX_SKT open_rx_socket(int *rx_sockfd, const int rx_ifindex)
 
 
 /*
- * Wait for incoming ECTP framess, and print their details when received
+ * Wait for incoming ECTP frames, and print their details when received
  */
 void print_rxed_frames(int *rx_sockfd)
 {
@@ -598,13 +593,12 @@ void print_rxed_frames(int *rx_sockfd)
 /*
  * Receive a pending ECTP frame
  */
-void rx_new_frame(
-				int *rx_sockfd,
-				unsigned char *pkt_buf,
-				const unsigned int pkt_buf_sz,
-				unsigned char *pkt_type,
-				unsigned int *pkt_len,
-				unsigned char *srcmac)
+void rx_new_frame(int *rx_sockfd,
+		  unsigned char *pkt_buf,
+		  const unsigned int pkt_buf_sz,
+		  unsigned char *pkt_type,
+		  unsigned int *pkt_len,
+		  unsigned char *srcmac)
 {
 	struct sockaddr_ll sa_ll;
 	unsigned int sa_ll_len;
@@ -630,12 +624,11 @@ void rx_new_frame(
 /*
  * print the received ECTP frame
  */
-void print_rxed_ectp_frame(
-				unsigned char *pkt_buf,
-				const unsigned int pkt_buf_sz,
-				unsigned char pkt_type,
-				unsigned int pkt_len,
-				unsigned char *srcmac)
+void print_rxed_ectp_frame(unsigned char *pkt_buf,
+			   const unsigned int pkt_buf_sz,
+			   unsigned char pkt_type,
+			   unsigned int pkt_len,
+			   unsigned char *srcmac)
 {
 
 
