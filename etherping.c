@@ -8,7 +8,7 @@
  */
 
 /* #define DEBUG 1 */
-//#define DEBUG 1 
+#define DEBUG 1 
 
 
 #include <stdio.h>
@@ -42,7 +42,8 @@
  */
 struct program_parameters {
 	int ifindex;
-	unsigned char srcmac[ETH_ALEN];
+	uint8_t srcmac[ETH_ALEN];
+	uint8_t dstmac[ETH_ALEN];
 };
 
 
@@ -51,6 +52,8 @@ struct program_parameters {
  */
 struct program_options {
 	char iface[IFNAMSIZ];
+	enum { ucast, mcast, bcast } dst_type;
+	char uc_dstmac[ENET_PADDR_MAXSZ];
 };
 
 
@@ -96,6 +99,8 @@ enum GET_PROG_PARMS get_prog_parms(const int argc,
 
 void print_prog_parms(const struct program_parameters *prog_parms);
 
+void set_default_prog_opts(struct program_options *prog_opts);
+
 enum GET_CLI_OPTS {
 	GET_CLI_OPTS_GOOD,
 	GET_CLI_OPTS_BAD
@@ -109,7 +114,8 @@ enum PROCESS_PROG_OPTS {
 	PROCESS_PROG_OPTS_GOOD,
 	PROCESS_PROG_OPTS_BAD
 };
-enum PROCESS_PROG_OPTS process_prog_opts(struct program_options *prog_opts,
+enum PROCESS_PROG_OPTS process_prog_opts(const struct program_options
+						*prog_opts,
 					 struct program_parameters *prog_parms);
 
 
@@ -176,7 +182,7 @@ void rx_new_frame(int *sockfd,
 		  const unsigned int pkt_buf_sz,
 		  unsigned char *pkt_type,
 		  unsigned int *pkt_len,
-		  unsigned char *srcmac);
+		  uint8_t *srcmac);
 
 void close_sockets(int *tx_sockfd, int *rx_sockfd);
 
@@ -331,7 +337,7 @@ enum GET_PROG_PARMS get_prog_parms(const int argc,
 
 	debug_fn_name(__func__);
 
-	memset(&prog_opts, 0, sizeof(prog_opts));
+	set_default_prog_opts(&prog_opts);
 
 	get_cli_opts(argc, argv, &prog_opts);
 
@@ -347,15 +353,39 @@ enum GET_PROG_PARMS get_prog_parms(const int argc,
  */
 void print_prog_parms(const struct program_parameters *prog_parms)
 {
-	char srcmacbuf[ENET_PADDR_MAXSZ];
+	char pmacbuf[ENET_PADDR_MAXSZ];
 
 
 	printf("prog_parms->ifindex = %d\n", prog_parms->ifindex);
 
-	enet_ntop(prog_parms->srcmac, ENET_NTOP_UNIX, srcmacbuf,
-		sizeof(srcmacbuf));
+	enet_ntop(prog_parms->srcmac, ENET_NTOP_UNIX, pmacbuf,
+		sizeof(pmacbuf));
+	printf("prog_parms->srcmac = %s\n", pmacbuf);
 
-	printf("prog_parms->srcmac = %s\n", srcmacbuf);
+	enet_ntop(prog_parms->dstmac, ENET_NTOP_UNIX, pmacbuf,
+		sizeof(pmacbuf));
+	printf("prog_parms->dstmac = %s\n", pmacbuf);
+
+}
+
+
+/*
+ * Set some reasonable program option defaults
+ */ 
+void set_default_prog_opts(struct program_options *prog_opts)
+{
+	char *default_iface = "eth0";
+
+
+	debug_fn_name(__func__);
+
+	memset(prog_opts, 0, sizeof(struct program_options));
+
+	/* default interface */
+	strncpy(prog_opts->iface, default_iface, IFNAMSIZ);
+	prog_opts->iface[IFNAMSIZ-1] = '\0';
+
+	prog_opts->dst_type = mcast;
 
 }
 
@@ -372,7 +402,7 @@ enum GET_CLI_OPTS get_cli_opts(const int argc,
 
 	debug_fn_name(__func__);
 
-	while ( (opt = getopt(argc, argv, "i:a")) != -1) {
+	while ( (opt = getopt(argc, argv, "i:ab")) != -1) {
 		switch (opt) {
 		case 'i':
 			strncpy(prog_opts->iface, optarg, IFNAMSIZ);
@@ -382,11 +412,20 @@ enum GET_CLI_OPTS get_cli_opts(const int argc,
 			/* reserved for listening on all interfaces
 			 * (by setting ifindex on rx socket to 0) */
 			break;
+		case 'b':
+			prog_opts->dst_type = bcast;
+			break;
 		}
 	}
 
-	return GET_CLI_OPTS_GOOD;
+	/* first non-opt is assumed to be dest mac addr */
+	if (optind < argc) { 
+		prog_opts->dst_type = ucast;
+		strncpy(prog_opts->uc_dstmac, argv[optind], ENET_PADDR_MAXSZ);
+		prog_opts->uc_dstmac[ENET_PADDR_MAXSZ-1] = '\0';
+	}
 
+	return GET_CLI_OPTS_GOOD;
 
 }
 
@@ -395,9 +434,14 @@ enum GET_CLI_OPTS get_cli_opts(const int argc,
  * Routine to convert collected program options into internal program
  * parameters
  */
-enum PROCESS_PROG_OPTS process_prog_opts(struct program_options *prog_opts,
+enum PROCESS_PROG_OPTS process_prog_opts(const struct program_options
+						*prog_opts,
 					 struct program_parameters *prog_parms)
 {
+	const uint8_t bcast_addr[ETH_ALEN] = { 0xff, 0xff, 0xff,
+					       0xff, 0xff, 0xff };
+	const uint8_t lc_mcaddr[ETH_ALEN] = ECTP_LA_MCADDR; 
+					    
 
 
 	debug_fn_name(__func__);
@@ -411,6 +455,22 @@ enum PROCESS_PROG_OPTS process_prog_opts(struct program_options *prog_opts,
 	if (get_ifmac(prog_opts->iface, prog_parms->srcmac)
 		!= GET_IFMAC_GOOD)
 			return PROCESS_PROG_OPTS_BAD;
+
+
+	switch (prog_opts->dst_type) {
+	case ucast:
+		if (enet_pton(prog_opts->uc_dstmac, prog_parms->dstmac) !=
+			ENET_PTON_GOOD)
+				return PROCESS_PROG_OPTS_BAD;
+		break;
+	case bcast:
+		memcpy(prog_parms->dstmac, bcast_addr, ETH_ALEN);
+		break;
+	case mcast:
+	default:
+		memcpy(prog_parms->dstmac, lc_mcaddr, ETH_ALEN);
+		break;
+	}
 
 
 	return PROCESS_PROG_OPTS_GOOD;
@@ -633,7 +693,7 @@ void print_rxed_frames(int *rx_sockfd)
 	unsigned char pkt_buf[65536];
 	unsigned char rxed_pkt_type;
 	unsigned int rxed_pkt_len;
-	unsigned char srcmac[ETH_ALEN];
+	uint8_t srcmac[ETH_ALEN];
 	char srcmacpbuf[ENET_PADDR_MAXSZ];
 	fd_set select_fd_set;
 	struct timeval select_tout;
@@ -696,7 +756,7 @@ void rx_new_frame(int *rx_sockfd,
 		  const unsigned int pkt_buf_sz,
 		  unsigned char *pkt_type,
 		  unsigned int *pkt_len,
-		  unsigned char *srcmac)
+		  uint8_t *srcmac)
 {
 	struct sockaddr_ll sa_ll;
 	unsigned int sa_ll_len;
@@ -726,7 +786,7 @@ void print_rxed_ectp_frame(unsigned char *pkt_buf,
 			   const unsigned int pkt_buf_sz,
 			   unsigned char pkt_type,
 			   unsigned int pkt_len,
-			   unsigned char *srcmac)
+			   uint8_t *srcmac)
 {
 
 

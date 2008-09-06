@@ -14,6 +14,11 @@ enum enet_pton_ok {
 	ENET_PTON_BADSEPERATOR
 };
 
+
+/*
+ * Convert supplied mac address in char format to binary. Only supports
+ * xx:xx:xx:xx:xx:xx or xx-xx-xx-xx-xx-xx format char addresses
+ */
 enum enet_pton_ok enet_pton(const char *enet_paddr,
 			    uint8_t enet_addr[ETH_ALEN]);
 

@@ -138,10 +138,9 @@ enum enet_pton_ok enet_pton(const char *enet_paddr,
 /*
  * Ethernet address Network to Presentation function
  */
-enum enet_ntop_ok enet_ntop(
-				const uint8_t enet_addr[ETH_ALEN],
-				const enum enet_ntop_format enet_ntop_fmt,
-				char *buf, const unsigned int buf_size)
+enum enet_ntop_ok enet_ntop(const uint8_t enet_addr[ETH_ALEN],
+			    const enum enet_ntop_format enet_ntop_fmt,
+			    char *buf, const unsigned int buf_size)
 {
 
 
