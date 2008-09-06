@@ -187,23 +187,25 @@ void build_ectp_eth_hdr(const uint8_t *srcmac,
 			const uint8_t *dstmac,
 			struct ether_header *eth_hdr);
 
-enum BUILD_ECTP_PKT {
-	BUILD_ECTP_PKT_GOOD,
-	BUILD_ECTP_PKT_BADBUFSIZE,
-	BUILD_ECTP_PKT_MTUTOOSMALL
+enum BUILD_ECTP_FRAME {
+	BUILD_ECTP_FRAME_GOOD,
+	BUILD_ECTP_FRAME_BADBUFSIZE,
+	BUILD_ECTP_FRAME_MTUTOOSMALL
 };
-enum BUILD_ECTP_PKT build_ectp_pkt(const struct program_parameters *prog_parms,
+enum BUILD_ECTP_FRAME build_ectp_frame(
+				   const struct program_parameters *prog_parms,
 				   uint8_t pkt_buf[],
 				   const unsigned int pkt_buf_sz,
-				   unsigned int *ectp_frame_len);
+				   unsigned int *ectp_packet_len);
 
 void tx_thread(struct tx_thread_arguments *tx_thread_args);
 
 void rx_thread(struct rx_thread_arguments *rx_thread_args);
 
-void process_rxed_frames(int *rx_sockfd);
+void process_rxed_packets(int *rx_sockfd,
+			 const struct program_parameters *prog_parms);
 
-void rx_new_frame(int *sockfd,
+void rx_new_packet(int *sockfd,
 		  unsigned char *pkt_buf,
 		  const unsigned int pkt_buf_sz,
 		  unsigned char *pkt_type,
@@ -676,39 +678,40 @@ void build_ectp_eth_hdr(const uint8_t *srcmac,
 }
 
 
-enum BUILD_ECTP_PKT build_ectp_pkt(const struct program_parameters *prog_parms,
-				   uint8_t pkt_buf[],
-				   const unsigned int pkt_buf_sz,
+enum BUILD_ECTP_FRAME build_ectp_frame(
+				   const struct program_parameters *prog_parms,
+				   uint8_t frame_buf[],
+				   const unsigned int frame_buf_sz,
 				   unsigned int *ectp_frame_len)
 {
 	unsigned int ifmtu;
 	unsigned int ectp_pkt_len;
 
 
-	if (sizeof(struct ether_header) > pkt_buf_sz)
-		return BUILD_ECTP_PKT_BADBUFSIZE;
+	if (sizeof(struct ether_header) > frame_buf_sz)
+		return BUILD_ECTP_FRAME_BADBUFSIZE;
 
 	build_ectp_eth_hdr(prog_parms->srcmac, prog_parms->dstmac,
-		(struct ether_header *)&pkt_buf[0]);
+		(struct ether_header *)&frame_buf[0]);
 	
-	ectp_pkt_len = ectp_calc_frame_size(1, prog_parms->ectp_payload_size);
+	ectp_pkt_len = ectp_calc_packet_size(1, prog_parms->ectp_payload_size);
 
-	if (ectp_pkt_len > (pkt_buf_sz - ETH_HLEN))
-		return BUILD_ECTP_PKT_BADBUFSIZE;
+	if (ectp_pkt_len > (frame_buf_sz - ETH_HLEN))
+		return BUILD_ECTP_FRAME_BADBUFSIZE;
 
 	get_ifmtu(prog_parms->iface, &ifmtu);
 
 	if (ectp_pkt_len > ifmtu)
-		return BUILD_ECTP_PKT_MTUTOOSMALL;
+		return BUILD_ECTP_FRAME_MTUTOOSMALL;
 
-	ectp_build_frame(0, (struct ether_addr *)prog_parms->srcmac,
+	ectp_build_packet(0, (struct ether_addr *)prog_parms->srcmac,
 		1, getpid(), prog_parms->ectp_payload,
-		prog_parms->ectp_payload_size, &pkt_buf[ETH_HLEN],
-		pkt_buf_sz - ETH_HLEN, 0x00);
+		prog_parms->ectp_payload_size, &frame_buf[ETH_HLEN],
+		frame_buf_sz - ETH_HLEN, 0x00);
 
 	*ectp_frame_len = ETH_HLEN + ectp_pkt_len;
 
-	return BUILD_ECTP_PKT_GOOD;
+	return BUILD_ECTP_FRAME_GOOD;
 
 }
 
@@ -718,16 +721,16 @@ enum BUILD_ECTP_PKT build_ectp_pkt(const struct program_parameters *prog_parms,
  */
 void tx_thread(struct tx_thread_arguments *tx_thread_args)
 {
-	uint8_t tx_pkt_buf[0xffff];
+	uint8_t tx_frame_buf[0xffff];
 	unsigned int ectp_frame_len;
 
 
 	debug_fn_name(__func__);
 
 	while (!quit_program) {
-		build_ectp_pkt(tx_thread_args->prog_parms, tx_pkt_buf,
-			sizeof(tx_pkt_buf), &ectp_frame_len);
-		send(*tx_thread_args->tx_sockfd, tx_pkt_buf, ectp_frame_len,
+		build_ectp_frame(tx_thread_args->prog_parms, tx_frame_buf,
+			sizeof(tx_frame_buf), &ectp_frame_len);
+		send(*tx_thread_args->tx_sockfd, tx_frame_buf, ectp_frame_len,
 			0);	
 		sleep(1);
 	}
@@ -744,9 +747,8 @@ void rx_thread(struct rx_thread_arguments *rx_thread_args)
 
 	debug_fn_name(__func__);
 
-	process_rxed_frames(rx_thread_args->rx_sockfd);
-
-	return;
+	process_rxed_packets(rx_thread_args->rx_sockfd,
+		rx_thread_args->prog_parms);
 
 }
 
@@ -806,15 +808,33 @@ enum OPEN_RX_SKT open_rx_socket(int *rx_sockfd, const int rx_ifindex)
 
 
 /*
+ * Validate the supplied ECTP packet, using the program parameters
+ * to determine some of the validation tests
+ */
+enum ECTP_PKT_VALID ectp_pkt_valid(const struct ectp_packet *ectp_pkt,
+				   const unsigned int ectp_pkt_size,
+				   const struct program_parameters *prog_parms)
+{
+	unsigned int skipcount;
+
+
+
+
+
+
+}
+
+
+/*
  * Wait for incoming ECTP frames, and print their details when received
  */
-void process_rxed_frames(int *rx_sockfd)
+void process_rxed_frames(int *rx_sockfd,
+			 const struct program_parameters *prog_parms)
 {
-	unsigned char pkt_buf[65536];
+	unsigned char pkt_buf[0xffff];
 	unsigned char rxed_pkt_type;
 	unsigned int rxed_pkt_len;
 	uint8_t srcmac[ETH_ALEN];
-	char srcmacpbuf[ENET_PADDR_MAXSZ];
 	fd_set select_fd_set;
 	struct timeval select_tout;
 	int select_result;
@@ -836,33 +856,11 @@ void process_rxed_frames(int *rx_sockfd)
 			NULL, &select_tout);
 
 		if (select_result > 0) {
-		
-			rx_new_frame(rx_sockfd, pkt_buf, sizeof(pkt_buf),
+			rx_new_packet(rx_sockfd, pkt_buf, sizeof(pkt_buf),
 				&rxed_pkt_type, &rxed_pkt_len, srcmac);
 
+
 			
-
-			switch (rxed_pkt_type) {
-			case PACKET_HOST:
-				printf("PACKET_HOST, ");
-				break;
-			case PACKET_BROADCAST:
-				printf("PACKET_BROADCAST, ");
-				break;
-			case PACKET_MULTICAST:
-				printf("PACKET_MULTICAST, ");
-				break;
-			case PACKET_OTHERHOST:
-				printf("PACKET_OTHERHOST, ");
-				break;
-			}
-
-			enet_ntop(srcmac, ENET_NTOP_UNIX, srcmacpbuf,
-				sizeof(srcmacpbuf));
-			printf("Packet source: %s, ", srcmacpbuf);
-	
-			printf("Packet length: %d\n", rxed_pkt_len);
-
 		}
 
 	}
@@ -873,7 +871,7 @@ void process_rxed_frames(int *rx_sockfd)
 /*
  * Receive a pending ECTP frame
  */
-void rx_new_frame(int *rx_sockfd,
+void rx_new_packet(int *rx_sockfd,
 		  unsigned char *pkt_buf,
 		  const unsigned int pkt_buf_sz,
 		  unsigned char *pkt_type,

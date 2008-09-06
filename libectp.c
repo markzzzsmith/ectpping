@@ -10,7 +10,7 @@
 #include "libectp.h"
 
 /*
- * ECTP frame utility functions
+ * ECTP packet utility functions
  */
 
 /*
@@ -52,13 +52,13 @@ uint16_t ectp_ntohs(uint16_t i)
 /*
  * ectp_get_skipcount()
  *
- * Get the skipcount value from a ectp frame, and return it in host order
+ * Get the skipcount value from a ectp packet, and return it in host order
  */
-unsigned int ectp_get_skipcount(const struct ectp_frame *ectp_frme)
+unsigned int ectp_get_skipcount(const struct ectp_packet *ectp_pkt)
 {
 
 
-	return (unsigned int) ectp_ntohs(ectp_frme->hdr.skipcount);
+	return (unsigned int) ectp_ntohs(ectp_pkt->hdr.skipcount);
 
 }
 
@@ -66,14 +66,14 @@ unsigned int ectp_get_skipcount(const struct ectp_frame *ectp_frme)
 /*
  * ectp_set_skipcount()
  *
- * Set the skipcount value in an ectp frame, supplied in host order
+ * Set the skipcount value in an ectp packet, supplied in host order
  */
-void ectp_set_skipcount(struct ectp_frame *ectp_frme,
+void ectp_set_skipcount(struct ectp_packet *ectp_pkt,
 			const unsigned int skipcount)
 {
 
 
-	ectp_frme->hdr.skipcount = ectp_htons((uint16_t)skipcount);
+	ectp_pkt->hdr.skipcount = ectp_htons((uint16_t)skipcount);
 
 }
 
@@ -81,18 +81,18 @@ void ectp_set_skipcount(struct ectp_frame *ectp_frme,
 /*
  * ectp_skipc_basicchk_ok()
  *
- * Check if the skipcount value in the specified frame is ok to use.
- * note, ectp_frme_len is assumed to be >= ECTP_REPLYMSG_MINSZ
+ * Check if the skipcount value in the specified packet is ok to use.
+ * note, ectp_pkt_len is assumed to be >= ECTP_REPLYMSG_MINSZ
  */
 bool ectp_skipc_basicchk_ok(const unsigned int skipcount,
-			    const unsigned int ectp_frme_len)
+			    const unsigned int ectp_pkt_len)
 {
 
 
 	if ((skipcount & (ECTP_FWDMSG_SZ-1)) != 0)
 		return false;
 
-	if (skipcount >= ectp_frme_len)
+	if (skipcount >= ectp_pkt_len)
 		return false;
 
 	return true;
@@ -107,10 +107,10 @@ bool ectp_skipc_basicchk_ok(const unsigned int skipcount,
  * value.
  */
 struct ectp_message *ectp_get_msg_ptr(const unsigned int skipcount,
-				      const struct ectp_frame *ectp_frme)
+				      const struct ectp_packet *ectp_pkt)
 {
 
-	return (struct ectp_message *)&(ectp_frme->payload[skipcount]);
+	return (struct ectp_message *)&(ectp_pkt->payload[skipcount]);
 
 }
 
@@ -119,14 +119,14 @@ struct ectp_message *ectp_get_msg_ptr(const unsigned int skipcount,
  * ectp_get_curr_msg_ptr()
  *
  * Returns a pointer to the message pointed to by skipcount in the supplied
- * ECTP frame
+ * ECTP packet
  */
-struct ectp_message *ectp_get_curr_msg_ptr(const struct ectp_frame
-							*ectp_frme)
+struct ectp_message *ectp_get_curr_msg_ptr(const struct ectp_packet
+							*ectp_pkt)
 {
 
 
-	return ectp_get_msg_ptr(ectp_get_skipcount(ectp_frme), ectp_frme);
+	return ectp_get_msg_ptr(ectp_get_skipcount(ectp_pkt), ectp_pkt);
 
 }
 
@@ -274,56 +274,56 @@ void ectp_set_rplymsg_data(struct ectp_message *ectp_rply_msg,
 /*
  * ectp_inc_skipcount()
  *
- * Makes skipcount point to the next ECTP message in the supplied frame
+ * Makes skipcount point to the next ECTP message in the supplied packet
  */
-void ectp_inc_skipcount(struct ectp_frame *ectp_frme)
+void ectp_inc_skipcount(struct ectp_packet *ectp_pkt)
 {
 	unsigned int skipcount;
 
 
-	skipcount = ectp_get_skipcount(ectp_frme);
+	skipcount = ectp_get_skipcount(ectp_pkt);
 
 	skipcount += ECTP_FWDMSG_SZ;
 
-	ectp_set_skipcount(ectp_frme, skipcount);
+	ectp_set_skipcount(ectp_pkt, skipcount);
 
 }
 
 
 /*
- * ectp_calc_frame_size()
+ * ectp_calc_packet_size()
  *
- * Calculates the size the ECTP frame would be (not including ethernet header)
+ * Calculates the size the ECTP packet would be (not including ethernet header)
  */
-unsigned int ectp_calc_frame_size(const unsigned int num_fwdmsgs,       
+unsigned int ectp_calc_packet_size(const unsigned int num_fwdmsgs,       
 				  const unsigned int payload_size)
 {
 
 
-	return ECTP_FRAME_HDR_SZ + (num_fwdmsgs * ECTP_FWDMSG_SZ) +
+	return ECTP_PACKET_HDR_SZ + (num_fwdmsgs * ECTP_FWDMSG_SZ) +
 		ECTP_REPLYMSG_MINSZ + payload_size;
 
 }
 
 
 /*
- * ectp_build_frame()
+ * ectp_build_packet()
  *
- * Builds an ECTP frame, not including ethernet header
+ * Builds an ECTP packet, not including ethernet header
  */
-void ectp_build_frame(const unsigned int skipcount,
+void ectp_build_packet(const unsigned int skipcount,
 		      const struct ether_addr *fwdaddrs,
 		      const unsigned int num_fwdaddrs,
 		      const uint16_t rcpt_num,
 		      const uint8_t *data,
 		      const unsigned int data_size,
-		      uint8_t frame_buf[],
-		      const unsigned int frame_buf_size,
+		      uint8_t packet_buf[],
+		      const unsigned int packet_buf_size,
 		      const uint8_t filler)
 {
-	unsigned int frame_idx = 0;
+	unsigned int packet_idx = 0;
 	uint8_t tmp_buf[ECTP_FWDMSG_SZ];
-	unsigned int buf_bytes_left = frame_buf_size;
+	unsigned int buf_bytes_left = packet_buf_size;
 	unsigned int i;
 	const struct ether_addr *fwdaddr; /*
 					   * obscure C const pointer thing,
@@ -333,21 +333,21 @@ void ectp_build_frame(const unsigned int skipcount,
 					   */
 
 
-	if (frame_buf_size == 0)
+	if (packet_buf_size == 0)
 		goto out;
 
-	memset(frame_buf, filler, frame_buf_size);
+	memset(packet_buf, filler, packet_buf_size);
 
-	/* ECTP frame header i.e. skipcount field */
-	if (buf_bytes_left > ECTP_FRAME_HDR_SZ) {
-		ectp_set_skipcount((struct ectp_frame *)&frame_buf[frame_idx],
+	/* ECTP packet header i.e. skipcount field */
+	if (buf_bytes_left > ECTP_PACKET_HDR_SZ) {
+		ectp_set_skipcount((struct ectp_packet *)&packet_buf[packet_idx],
 			skipcount);
-		frame_idx += ECTP_FRAME_HDR_SZ;
-		buf_bytes_left -= ECTP_FRAME_HDR_SZ;
+		packet_idx += ECTP_PACKET_HDR_SZ;
+		buf_bytes_left -= ECTP_PACKET_HDR_SZ;
 	} else {
-		ectp_set_skipcount((struct ectp_frame *)tmp_buf,
+		ectp_set_skipcount((struct ectp_packet *)tmp_buf,
 			skipcount);
-		memcpy(frame_buf, tmp_buf, frame_buf_size);
+		memcpy(packet_buf, tmp_buf, packet_buf_size);
 		goto out;
 	}
 
@@ -357,15 +357,15 @@ void ectp_build_frame(const unsigned int skipcount,
 	while ((i <= num_fwdaddrs) && buf_bytes_left) {
 		if (buf_bytes_left >= ECTP_FWDMSG_SZ) {
 			ectp_set_fwdmsg((struct ectp_message *)
-				&frame_buf[frame_idx], (uint8_t *)fwdaddr);
+				&packet_buf[packet_idx], (uint8_t *)fwdaddr);
 			fwdaddr++;
-			frame_idx += ECTP_FWDMSG_SZ;
+			packet_idx += ECTP_FWDMSG_SZ;
 			buf_bytes_left -= ECTP_FWDMSG_SZ;
 			i++;
 		} else {
 			ectp_set_fwdmsg((struct ectp_message *)tmp_buf,
 				(uint8_t *)fwdaddr);
-			memcpy(&frame_buf[frame_idx], tmp_buf, buf_bytes_left);
+			memcpy(&packet_buf[packet_idx], tmp_buf, buf_bytes_left);
 			buf_bytes_left = 0;
 		}
 	}
@@ -376,24 +376,24 @@ void ectp_build_frame(const unsigned int skipcount,
 	/* ECTP reply message header */
 	if (buf_bytes_left > ECTP_REPLYMSG_MINSZ) {
 		ectp_set_rplymsg_hdr((struct ectp_message *)
-			&frame_buf[frame_idx], rcpt_num);
+			&packet_buf[packet_idx], rcpt_num);
 		buf_bytes_left -= ECTP_REPLYMSG_MINSZ;
 	} else {
 		ectp_set_rplymsg_hdr((struct ectp_message *)tmp_buf,
 			rcpt_num);
-		memcpy(&frame_buf[frame_idx], tmp_buf, buf_bytes_left);
+		memcpy(&packet_buf[packet_idx], tmp_buf, buf_bytes_left);
 		goto out;
 	}
 
 	/* ECTP reply message data/payload */
 	if (buf_bytes_left >= data_size) {
 		ectp_set_rplymsg_data(
-			(struct ectp_message *)&frame_buf[frame_idx],
+			(struct ectp_message *)&packet_buf[packet_idx],
 			data, data_size);
 	}  else {
 		if (buf_bytes_left > 0)
 			ectp_set_rplymsg_data(
-				(struct ectp_message *)&frame_buf[frame_idx],
+				(struct ectp_message *)&packet_buf[packet_idx],
 				data, buf_bytes_left);
 	}
 

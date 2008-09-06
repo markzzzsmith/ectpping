@@ -27,7 +27,7 @@
  * ECTP header size in octets (i.e. skipcount field)
  */
 enum {
-	ECTP_FRAME_HDR_SZ	= 2,
+	ECTP_PACKET_HDR_SZ	= 2,
 };
 
 
@@ -48,10 +48,10 @@ enum {
 
 
 /*
- * Minimum ECTP frame size (Must be the sum of the above :-) )
+ * Minimum ECTP packet size (Must be the sum of the above :-) )
  */
 enum {
-	ECTP_FRAME_MIN_SZ	= 14,
+	ECTP_PACKET_MIN_SZ	= 14,
 };
 
 
@@ -66,7 +66,7 @@ enum {
 
 
 /*
- * ECTP frame structures
+ * ECTP packet structures
  */
 
 
@@ -78,16 +78,16 @@ enum {
  * network order - don't use traditional ntohs() or htons() functions
  * on it, because they won't work.
  */
-struct ectp_frame_header {
+struct ectp_packet_header {
         uint16_t skipcount; 
 } __attribute__ ((packed));
 
 
 /*
- * ECTP frame
+ * ECTP packet
  */
-struct ectp_frame {
-        struct ectp_frame_header hdr;
+struct ectp_packet {
+        struct ectp_packet_header hdr;
         uint8_t payload[];
 } __attribute__ ((packed));
 
@@ -130,27 +130,27 @@ struct ectp_message {
 
 
 /*
- * ECTP frame utility functions
+ * ECTP packet utility functions
  */
 
 uint16_t ectp_htons(uint16_t i);
 
 uint16_t ectp_ntohs(uint16_t i);
 
-unsigned int ectp_get_skipcount(const struct ectp_frame *ectp_frme);
+unsigned int ectp_get_skipcount(const struct ectp_packet *ectp_pkt);
 
-void ectp_set_skipcount(struct ectp_frame *ectp_frme,
+void ectp_set_skipcount(struct ectp_packet *ectp_pkt,
 			const unsigned int skipcount);
 
 bool ectp_skipc_basicchk_ok(const unsigned int skipcount,
-		   	   const unsigned int ectp_frme_len);
+		   	   const unsigned int ectp_pkt_len);
 
 struct ectp_message *ectp_get_msg_ptr(const unsigned int skipcount,
-				      const struct ectp_frame
-					*ectp_frme);
+				      const struct ectp_packet
+					*ectp_pkt);
 
-struct ectp_message *ectp_get_curr_msg_ptr(const struct ectp_frame
-						*ectp_frme);
+struct ectp_message *ectp_get_curr_msg_ptr(const struct ectp_packet
+						*ectp_pkt);
 
 uint16_t ectp_get_msg_type(const struct ectp_message *ectp_msg);
 
@@ -177,19 +177,19 @@ void ectp_set_rplymsg_data(struct ectp_message *ectp_rply_msg,
 			   const uint8_t *data,
 			   const unsigned int data_size);
 
-void ectp_inc_skipcount(struct ectp_frame *ectp_frme);
+void ectp_inc_skipcount(struct ectp_packet *ectp_pkt);
 
-unsigned int ectp_calc_frame_size(const unsigned int num_fwdmsgs,
+unsigned int ectp_calc_packet_size(const unsigned int num_fwdmsgs,
 				  const unsigned int payload_size);
 
-void ectp_build_frame(const unsigned int skipcount,
+void ectp_build_packet(const unsigned int skipcount,
 		      const struct ether_addr *fwdaddrs,
 		      const unsigned int num_fwdaddrs,
 		      const uint16_t rcpt_num,
 		      const uint8_t *data,
 		      const unsigned int data_size,
-		      uint8_t frame_buf[],
-		      const unsigned int frame_buf_size,
+		      uint8_t packet_buf[],
+		      const unsigned int packet_buf_size,
 		      const uint8_t filler);
 
 #endif /* __libectp_h__ */
