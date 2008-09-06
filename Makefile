@@ -9,5 +9,5 @@ libectp.o : libectp.h libectp.c
 	gcc -Wall -c libectp.c
 
 clean:
-	rm -f etherping libenetaddr.o
+	rm -f etherping libenetaddr.o libectp.o
 

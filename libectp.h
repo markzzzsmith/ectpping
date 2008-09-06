@@ -32,6 +32,14 @@ enum {
 
 
 /*
+ * ECTP message function field size
+ */ 
+enum { 
+	ECTP_MSG_FUNC_SZ	= 2,
+};
+
+
+/*
  * Forward Message size in octets (includes Function field)
  */
 enum {
@@ -170,12 +178,17 @@ void ectp_set_fwdmsg(struct ectp_message *ectp_fwd_msg,
 void ectp_set_rplymsg_rcpt_num(struct ectp_message *ectp_rply_msg, 
 			       const uint16_t rcpt_num);
 
+uint16_t ectp_get_rplymsg_rcpt_num(const struct ectp_message *ectp_rply_msg);
+
 void ectp_set_rplymsg_hdr(struct ectp_message *ectp_rply_msg,
 			  const uint16_t rcpt_num);
 
 void ectp_set_rplymsg_data(struct ectp_message *ectp_rply_msg, 
 			   const uint8_t *data,
 			   const unsigned int data_size);
+
+uint8_t *ectp_get_rplymsg_data_ptr(struct ectp_message *ectp_rply_msg);
+
 
 void ectp_inc_skipcount(struct ectp_packet *ectp_pkt);
 

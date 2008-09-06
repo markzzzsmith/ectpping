@@ -239,6 +239,20 @@ void ectp_set_rplymsg_rcpt_num(struct ectp_message *ectp_rply_msg,
 
 
 /*
+ * ectp_get_rplymsg_rcpt_num()
+ *
+ * gets the specified receipt number form the provided reply message
+ */
+uint16_t ectp_get_rplymsg_rcpt_num(const struct ectp_message *ectp_rply_msg)
+{
+
+
+	return ectp_rply_msg->rply_msg.rcpt_num;
+
+}
+
+
+/*
  * ectp_set_rplymsg_hdr()
  *
  * Initialises a reply message header
@@ -267,6 +281,18 @@ void ectp_set_rplymsg_data(struct ectp_message *ectp_rply_msg,
 
 
 	memcpy(ectp_rply_msg->rply_msg.data, data, data_size);
+
+}
+
+
+/*
+ * Returns a pointer to the supplied reply message's data
+ */
+uint8_t *ectp_get_rplymsg_data_ptr(struct ectp_message *ectp_rply_msg)
+{
+
+
+	return ectp_rply_msg->rply_msg.data;
 
 }
 
