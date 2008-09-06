@@ -30,12 +30,7 @@
 #include <net/if_arp.h>
 
 #include "libenetaddr.h"
-
-
-/*
- * ECTP frames are of type 0x9000
- */
-#define ETH_P_ECTP 0x9000
+#include "libectp.h"
 
 
 /*
@@ -586,7 +581,7 @@ enum OPEN_TX_SKT open_tx_socket(int *tx_sockfd, const int tx_ifindex)
 
 	debug_fn_name(__func__);
 
-	*tx_sockfd = socket(PF_PACKET, SOCK_DGRAM, 0);
+	*tx_sockfd = socket(PF_PACKET, SOCK_RAW, 0);
 	if (*tx_sockfd == -1)
 		return OPEN_TX_SKT_BADSOCKET;
 
@@ -613,7 +608,7 @@ enum OPEN_RX_SKT open_rx_socket(int *rx_sockfd, const int rx_ifindex)
 
 	debug_fn_name(__func__);
 
-	*rx_sockfd = socket(PF_PACKET, SOCK_DGRAM, htons(ETH_P_ECTP));
+	*rx_sockfd = socket(PF_PACKET, SOCK_DGRAM, htons(ETHERTYPE_LOOPBACK));
 	if (*rx_sockfd == -1)
 		return OPEN_RX_SKT_BADSOCKET;
 
