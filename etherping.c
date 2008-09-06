@@ -28,6 +28,7 @@
 #include <net/ethernet.h>
 #include <net/if.h>
 #include <net/if_arp.h>
+#include <netinet/ether.h>
 
 #include "libenetaddr.h"
 #include "libectp.h"
@@ -53,7 +54,7 @@ struct program_parameters {
 struct program_options {
 	char iface[IFNAMSIZ];
 	enum { ucast, mcast, bcast } dst_type;
-	char uc_dstmac[ENET_PADDR_MAXSZ];
+	char *uc_dst_str; /* mac address or /etc/ethers hostname */
 };
 
 
@@ -421,8 +422,7 @@ enum GET_CLI_OPTS get_cli_opts(const int argc,
 	/* first non-opt is assumed to be dest mac addr */
 	if (optind < argc) { 
 		prog_opts->dst_type = ucast;
-		strncpy(prog_opts->uc_dstmac, argv[optind], ENET_PADDR_MAXSZ);
-		prog_opts->uc_dstmac[ENET_PADDR_MAXSZ-1] = '\0';
+		prog_opts->uc_dst_str = argv[optind];
 	}
 
 	return GET_CLI_OPTS_GOOD;
@@ -459,9 +459,14 @@ enum PROCESS_PROG_OPTS process_prog_opts(const struct program_options
 
 	switch (prog_opts->dst_type) {
 	case ucast:
-		if (enet_pton(prog_opts->uc_dstmac, prog_parms->dstmac) !=
-			ENET_PTON_GOOD)
-				return PROCESS_PROG_OPTS_BAD;
+		if (ether_hostton(prog_opts->uc_dst_str,
+			(struct ether_addr *)prog_parms->dstmac) == 0) {
+			break;
+		}
+		if (enet_pton(prog_opts->uc_dst_str, prog_parms->dstmac) !=
+			ENET_PTON_GOOD) {
+			return PROCESS_PROG_OPTS_BAD;
+		}
 		break;
 	case bcast:
 		memcpy(prog_parms->dstmac, bcast_addr, ETH_ALEN);
