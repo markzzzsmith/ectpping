@@ -8,7 +8,7 @@
  */
 
 /* #define DEBUG 1 */
-#define DEBUG 1 
+//#define DEBUG 1 
 
 
 #include <stdio.h>
@@ -42,9 +42,12 @@
  * Program parameters in internal program format
  */
 struct program_parameters {
+	char iface[IFNAMSIZ];
 	int ifindex;
 	uint8_t srcmac[ETH_ALEN];
 	uint8_t dstmac[ETH_ALEN];
+	uint8_t *ectp_payload;
+	unsigned int ectp_payload_size;
 };
 
 
@@ -54,7 +57,7 @@ struct program_parameters {
 struct program_options {
 	char iface[IFNAMSIZ];
 	enum { ucast, mcast, bcast } dst_type;
-	char *uc_dst_str; /* mac address or /etc/ethers hostname */
+	char *uc_dst_str; /* mac address or /etc/ethers hostname string */
 };
 
 
@@ -146,6 +149,14 @@ enum GET_IFMAC {
 enum GET_IFMAC get_ifmac(const char iface[IFNAMSIZ],
 			 unsigned char ifmac[ETH_ALEN]);
 
+enum GET_IFMTU {
+	GET_IFMTU_GOOD,
+	GET_IFMTU_BADSOCKET,
+	GET_IFMTU_BADIFACE
+};
+enum GET_IFMTU get_ifmtu(const char iface[IFNAMSIZ],
+			 unsigned int *ifmtu);
+
 
 void open_sockets(int *tx_sockfd, int *rx_sockfd, const int ifindex);
 
@@ -172,11 +183,25 @@ void prepare_thread_args(struct tx_thread_arguments *tx_thread_args,
 			 int *tx_sockfd,
 			 int *rx_sockfd);
 
+void build_ectp_eth_hdr(const uint8_t *srcmac,
+			const uint8_t *dstmac,
+			struct ether_header *eth_hdr);
+
+enum BUILD_ECTP_PKT {
+	BUILD_ECTP_PKT_GOOD,
+	BUILD_ECTP_PKT_BADBUFSIZE,
+	BUILD_ECTP_PKT_MTUTOOSMALL
+};
+enum BUILD_ECTP_PKT build_ectp_pkt(const struct program_parameters *prog_parms,
+				   uint8_t pkt_buf[],
+				   const unsigned int pkt_buf_sz,
+				   unsigned int *ectp_frame_len);
+
 void tx_thread(struct tx_thread_arguments *tx_thread_args);
 
 void rx_thread(struct rx_thread_arguments *rx_thread_args);
 
-void print_rxed_frames(int *rx_sockfd);
+void process_rxed_frames(int *rx_sockfd);
 
 void rx_new_frame(int *sockfd,
 		  unsigned char *pkt_buf,
@@ -228,11 +253,17 @@ int main(int argc, char *argv[])
 	int tx_sockfd, rx_sockfd;
 	struct tx_thread_arguments tx_thread_args;
 	struct rx_thread_arguments rx_thread_args;
+	unsigned char ectp_payload[] =
+		__BASE_FILE__ ", built " __TIMESTAMP__ ", using GCC version "
+		__VERSION__;
 
 
 	debug_fn_name(__func__);
 
 	get_prog_parms(argc, argv, &prog_parms);
+
+	prog_parms.ectp_payload = ectp_payload;
+	prog_parms.ectp_payload_size = sizeof(ectp_payload);
 
 	print_prog_parms(&prog_parms);
 
@@ -456,6 +487,8 @@ enum PROCESS_PROG_OPTS process_prog_opts(const struct program_options
 		!= GET_IFMAC_GOOD)
 			return PROCESS_PROG_OPTS_BAD;
 
+	strncpy(prog_parms->iface, prog_opts->iface, IFNAMSIZ);
+	prog_parms->iface[IFNAMSIZ-1] = '\0';
 
 	switch (prog_opts->dst_type) {
 	case ucast:
@@ -550,7 +583,6 @@ enum GET_IFMAC get_ifmac(const char iface[IFNAMSIZ],
 
 	debug_fn_name(__func__);
 
-
 	if (do_ifreq_ioctl(SIOCGIFHWADDR, iface, &ifr) == DO_IFREQ_IOCTL_GOOD) {
 		if (ifr.ifr_hwaddr.sa_family == ARPHRD_ETHER) {
 			memcpy(ifmac, ifr.ifr_hwaddr.sa_data, ETH_ALEN);
@@ -561,6 +593,30 @@ enum GET_IFMAC get_ifmac(const char iface[IFNAMSIZ],
 	} else {
 		return GET_IFMAC_BADIFACE;
 	}
+
+}
+
+
+/*
+ * Routine to get the MTU of the specified interface 
+ */
+enum GET_IFMTU get_ifmtu(const char iface[IFNAMSIZ],
+			 unsigned int *ifmtu)
+{
+	struct ifreq ifr;
+
+
+	debug_fn_name(__func__);
+
+
+	if (do_ifreq_ioctl(SIOCGIFMTU, iface, &ifr) == DO_IFREQ_IOCTL_GOOD) {
+		*ifmtu = ifr.ifr_mtu;
+		return GET_IFMTU_GOOD;
+	} else {
+		return GET_IFMTU_BADIFACE;
+	}
+
+
 
 }
 
@@ -604,17 +660,76 @@ void prepare_thread_args(struct tx_thread_arguments *tx_thread_args,
 
 
 /*
+ * Build the ectp frame ethernet header
+ */
+void build_ectp_eth_hdr(const uint8_t *srcmac,
+			const uint8_t *dstmac,
+			struct ether_header *eth_hdr)
+{
+
+
+	memcpy(eth_hdr->ether_shost, srcmac, ETH_ALEN);
+	memcpy(eth_hdr->ether_dhost, dstmac, ETH_ALEN);
+
+	eth_hdr->ether_type = htons(ETHERTYPE_LOOPBACK);
+
+}
+
+
+enum BUILD_ECTP_PKT build_ectp_pkt(const struct program_parameters *prog_parms,
+				   uint8_t pkt_buf[],
+				   const unsigned int pkt_buf_sz,
+				   unsigned int *ectp_frame_len)
+{
+	unsigned int ifmtu;
+	unsigned int ectp_pkt_len;
+
+
+	if (sizeof(struct ether_header) > pkt_buf_sz)
+		return BUILD_ECTP_PKT_BADBUFSIZE;
+
+	build_ectp_eth_hdr(prog_parms->srcmac, prog_parms->dstmac,
+		(struct ether_header *)&pkt_buf[0]);
+	
+	ectp_pkt_len = ectp_calc_frame_size(1, prog_parms->ectp_payload_size);
+
+	if (ectp_pkt_len > (pkt_buf_sz - ETH_HLEN))
+		return BUILD_ECTP_PKT_BADBUFSIZE;
+
+	get_ifmtu(prog_parms->iface, &ifmtu);
+
+	if (ectp_pkt_len > ifmtu)
+		return BUILD_ECTP_PKT_MTUTOOSMALL;
+
+	ectp_build_frame(0, (struct ether_addr *)prog_parms->srcmac,
+		1, getpid(), prog_parms->ectp_payload,
+		prog_parms->ectp_payload_size, &pkt_buf[ETH_HLEN],
+		pkt_buf_sz - ETH_HLEN, 0x00);
+
+	*ectp_frame_len = ETH_HLEN + ectp_pkt_len;
+
+	return BUILD_ECTP_PKT_GOOD;
+
+}
+
+
+/*
  * ECTP frame sender thread
  */
 void tx_thread(struct tx_thread_arguments *tx_thread_args)
 {
+	uint8_t tx_pkt_buf[0xffff];
+	unsigned int ectp_frame_len;
 
 
 	debug_fn_name(__func__);
 
-	while (quit_program == 0) {
-		printf("emit ECTP frame\n");
-		sleep(5);
+	while (!quit_program) {
+		build_ectp_pkt(tx_thread_args->prog_parms, tx_pkt_buf,
+			sizeof(tx_pkt_buf), &ectp_frame_len);
+		send(*tx_thread_args->tx_sockfd, tx_pkt_buf, ectp_frame_len,
+			0);	
+		sleep(1);
 	}
 
 }
@@ -629,7 +744,7 @@ void rx_thread(struct rx_thread_arguments *rx_thread_args)
 
 	debug_fn_name(__func__);
 
-	print_rxed_frames(rx_thread_args->rx_sockfd);
+	process_rxed_frames(rx_thread_args->rx_sockfd);
 
 	return;
 
@@ -693,7 +808,7 @@ enum OPEN_RX_SKT open_rx_socket(int *rx_sockfd, const int rx_ifindex)
 /*
  * Wait for incoming ECTP frames, and print their details when received
  */
-void print_rxed_frames(int *rx_sockfd)
+void process_rxed_frames(int *rx_sockfd)
 {
 	unsigned char pkt_buf[65536];
 	unsigned char rxed_pkt_type;
@@ -708,7 +823,7 @@ void print_rxed_frames(int *rx_sockfd)
 	debug_fn_name(__func__);
 
 
-	while (quit_program == 0) {
+	while (!quit_program) {
 
 		FD_ZERO(&select_fd_set);
 		FD_SET(*rx_sockfd, &select_fd_set);
@@ -724,6 +839,8 @@ void print_rxed_frames(int *rx_sockfd)
 		
 			rx_new_frame(rx_sockfd, pkt_buf, sizeof(pkt_buf),
 				&rxed_pkt_type, &rxed_pkt_len, srcmac);
+
+			
 
 			switch (rxed_pkt_type) {
 			case PACKET_HOST:

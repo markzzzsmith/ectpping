@@ -179,6 +179,9 @@ void ectp_set_rplymsg_data(struct ectp_message *ectp_rply_msg,
 
 void ectp_inc_skipcount(struct ectp_frame *ectp_frme);
 
+unsigned int ectp_calc_frame_size(const unsigned int num_fwdmsgs,
+				  const unsigned int payload_size);
+
 void ectp_build_frame(const unsigned int skipcount,
 		      const struct ether_addr *fwdaddrs,
 		      const unsigned int num_fwdaddrs,

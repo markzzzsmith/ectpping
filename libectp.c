@@ -291,6 +291,22 @@ void ectp_inc_skipcount(struct ectp_frame *ectp_frme)
 
 
 /*
+ * ectp_calc_frame_size()
+ *
+ * Calculates the size the ECTP frame would be (not including ethernet header)
+ */
+unsigned int ectp_calc_frame_size(const unsigned int num_fwdmsgs,       
+				  const unsigned int payload_size)
+{
+
+
+	return ECTP_FRAME_HDR_SZ + (num_fwdmsgs * ECTP_FWDMSG_SZ) +
+		ECTP_REPLYMSG_MINSZ + payload_size;
+
+}
+
+
+/*
  * ectp_build_frame()
  *
  * Builds an ECTP frame, not including ethernet header
