@@ -8,6 +8,7 @@
  */
 
 /* #define DEBUG 1 */
+//#define DEBUG 1 
 
 
 #include <stdio.h>
@@ -26,6 +27,7 @@
 #include <netpacket/packet.h>
 #include <net/ethernet.h>
 #include <net/if.h>
+#include <net/if_arp.h>
 
 #include "libenetaddr.h"
 
@@ -45,6 +47,7 @@
  */
 struct program_parameters {
 	int ifindex;
+	unsigned char srcmac[ETH_ALEN];
 };
 
 
@@ -96,6 +99,8 @@ enum GET_PROG_PARMS get_prog_parms(const int argc,
 				   struct program_parameters *prog_parms);
 
 
+void print_prog_parms(const struct program_parameters *prog_parms);
+
 enum GET_CLI_OPTS {
 	GET_CLI_OPTS_GOOD,
 	GET_CLI_OPTS_BAD
@@ -113,12 +118,31 @@ enum PROCESS_PROG_OPTS process_prog_opts(struct program_options *prog_opts,
 					 struct program_parameters *prog_parms);
 
 
+enum DO_IFREQ_IOCTL {
+	DO_IFREQ_IOCTL_GOOD,
+	DO_IFREQ_IOCTL_BADSOCKET,
+	DO_IFREQ_IOCTL_BADIOCTL
+};
+enum DO_IFREQ_IOCTL do_ifreq_ioctl(const int ioctl_request,
+				   const char iface[IFNAMSIZ],
+				   struct ifreq *ifr);
+
+
 enum GET_IFINDEX {
 	GET_IFINDEX_GOOD,
 	GET_IFINDEX_BADSOCKET,
 	GET_IFINDEX_BADIFACE
 };
 enum GET_IFINDEX get_ifindex(const char iface[IFNAMSIZ], int *ifindex);
+
+
+enum GET_IFMAC {
+	GET_IFMAC_GOOD,
+	GET_IFMAC_BADSOCKET,
+	GET_IFMAC_BADIFACE
+};
+enum GET_IFMAC get_ifmac(const char iface[IFNAMSIZ],
+			 unsigned char ifmac[ETH_ALEN]);
 
 
 void open_sockets(int *tx_sockfd, int *rx_sockfd, const int ifindex);
@@ -207,6 +231,8 @@ int main(int argc, char *argv[])
 	debug_fn_name(__func__);
 
 	get_prog_parms(argc, argv, &prog_parms);
+
+	print_prog_parms(&prog_parms);
 
 	open_sockets(&tx_sockfd, &rx_sockfd, prog_parms.ifindex);
 
@@ -322,6 +348,24 @@ enum GET_PROG_PARMS get_prog_parms(const int argc,
 
 
 /*
+ * Routine to print program parameters
+ */
+void print_prog_parms(const struct program_parameters *prog_parms)
+{
+	char srcmacbuf[ENET_PADDR_MAXSZ];
+
+
+	printf("prog_parms->ifindex = %d\n", prog_parms->ifindex);
+
+	enet_ntop(prog_parms->srcmac, ENET_NTOP_UNIX, srcmacbuf,
+		sizeof(srcmacbuf));
+
+	printf("prog_parms->srcmac = %s\n", srcmacbuf);
+
+}
+
+
+/*
  * Routine to collect program options from *argv[];
  */
 enum GET_CLI_OPTS get_cli_opts(const int argc,
@@ -333,11 +377,15 @@ enum GET_CLI_OPTS get_cli_opts(const int argc,
 
 	debug_fn_name(__func__);
 
-	while ( (opt = getopt(argc, argv, "i:")) != -1) {
+	while ( (opt = getopt(argc, argv, "i:a")) != -1) {
 		switch (opt) {
 		case 'i':
 			strncpy(prog_opts->iface, optarg, IFNAMSIZ);
 			prog_opts->iface[IFNAMSIZ-1] = 0;
+			break;
+		case 'a':
+			/* reserved for listening on all interfaces
+			 * (by setting ifindex on rx socket to 0) */
 			break;
 		}
 	}
@@ -365,8 +413,48 @@ enum PROCESS_PROG_OPTS process_prog_opts(struct program_options *prog_opts,
 		!= GET_IFINDEX_GOOD)
 			return PROCESS_PROG_OPTS_BAD;
 
+	if (get_ifmac(prog_opts->iface, prog_parms->srcmac)
+		!= GET_IFMAC_GOOD)
+			return PROCESS_PROG_OPTS_BAD;
+
 
 	return PROCESS_PROG_OPTS_GOOD;
+
+}
+
+
+/*
+ * Routine to perform the specified interface ioctl
+ */
+enum DO_IFREQ_IOCTL do_ifreq_ioctl(const int ioctl_request,
+				   const char iface[IFNAMSIZ],
+				   struct ifreq *ifr)
+{
+	int sockfd;
+	int ioctlret;
+
+
+
+	debug_fn_name(__func__);
+
+	sockfd = socket(PF_PACKET, SOCK_DGRAM, 0);
+	if (sockfd == -1)
+		return DO_IFREQ_IOCTL_BADSOCKET;
+
+	memset(ifr, 0, sizeof(struct ifreq));
+
+	strncpy(ifr->ifr_name, iface, IFNAMSIZ);
+	ifr->ifr_name[IFNAMSIZ-1] = 0;
+
+	ioctlret = ioctl(sockfd, ioctl_request, ifr);
+
+	if (close(sockfd) == -1)
+		return DO_IFREQ_IOCTL_BADSOCKET;
+
+	if (ioctlret == -1)
+		return DO_IFREQ_IOCTL_BADIOCTL;
+	else
+		return DO_IFREQ_IOCTL_GOOD;
 
 }
 
@@ -376,28 +464,12 @@ enum PROCESS_PROG_OPTS process_prog_opts(struct program_options *prog_opts,
  */
 enum GET_IFINDEX get_ifindex(const char iface[IFNAMSIZ], int *ifindex)
 {
-	int sockfd;
 	struct ifreq ifr;
-	int ioctlret;
 
 
 	debug_fn_name(__func__);
 
-	sockfd = socket(PF_PACKET, SOCK_RAW, 0);
-	if (sockfd == -1)
-		return GET_IFINDEX_BADSOCKET;
-
-	memset(&ifr, 0, sizeof(struct ifreq));
-
-	strncpy(ifr.ifr_name, iface, IFNAMSIZ);
-	ifr.ifr_name[IFNAMSIZ-1] = 0;
-
-	ioctlret = ioctl(sockfd, SIOCGIFINDEX, &ifr);
-
-	if (close(sockfd) == -1)
-		return GET_IFINDEX_BADSOCKET;
-	
-	if (ioctlret != -1) {
+	if (do_ifreq_ioctl(SIOCGIFINDEX, iface, &ifr) == DO_IFREQ_IOCTL_GOOD) {
 		*ifindex = ifr.ifr_ifindex;
 		return GET_IFINDEX_GOOD;
 	} else {
@@ -410,7 +482,27 @@ enum GET_IFINDEX get_ifindex(const char iface[IFNAMSIZ], int *ifindex)
 /*
  * Routine to get the mac address for an interface
  */
+enum GET_IFMAC get_ifmac(const char iface[IFNAMSIZ],
+			 unsigned char ifmac[ETH_ALEN])
+{
+	struct ifreq ifr;
 
+
+	debug_fn_name(__func__);
+
+
+	if (do_ifreq_ioctl(SIOCGIFHWADDR, iface, &ifr) == DO_IFREQ_IOCTL_GOOD) {
+		if (ifr.ifr_hwaddr.sa_family == ARPHRD_ETHER) {
+			memcpy(ifmac, ifr.ifr_hwaddr.sa_data, ETH_ALEN);
+			return GET_IFMAC_GOOD;
+		} else {
+			return GET_IFMAC_BADIFACE;
+		}
+	} else {
+		return GET_IFMAC_BADIFACE;
+	}
+
+}
 
 
 /*
