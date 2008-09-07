@@ -438,11 +438,12 @@ void sigint_hdlr(int signum)
 		
 	if (txed_pkts > 0) {
 		if (rxed_pkts <= txed_pkts) 			
-			printf(", %d%% packet loss\n",
-				((txed_pkts - rxed_pkts) / txed_pkts) * 100);
+			printf(", %f%% packet loss\n",
+				((txed_pkts - rxed_pkts) / (txed_pkts * 1.0))
+					* 100);
 		else
-			printf(", %d%% packet increase\n",
-				(rxed_pkts / txed_pkts) * 100);
+			printf(", %f times packet increase\n",
+				(rxed_pkts / (txed_pkts * 1.0)));
 
 		if (rxed_pkts > 0)
 			printf("round-trip (us)  min/avg/max = %ld/%ld/%ld\n",
@@ -1029,7 +1030,7 @@ void print_rxed_packet(const struct program_parameters *prog_parms,
 				       eping_payload.seq_num,
 				       tv_diff.tv_usec);
 			} else {
-				printf("%d bytes from %10s (%s):"
+				printf("%d bytes from %15s (%s):"
 				       " ectp_seq=%d time=%ld us\n", pkt_len,
 					srcmachost, srcmacpbuf,
 					eping_payload.seq_num,
