@@ -98,13 +98,13 @@ struct etherping_payload {
 
 void debug_fn_name(const char *s);
 
-void setup_sigterm_hdlr(struct sigaction *sigterm_action);
+void setup_sigint_hdlr(struct sigaction *sigint_action);
 
 void print_prog_header(const struct program_parameters *prog_parms);
 
-void set_sigterm_hdlr(struct sigaction *sigterm_action);
+void set_sigint_hdlr(struct sigaction *sigint_action);
 
-void sigterm_hdlr(int signum);
+void sigint_hdlr(int signum);
 
 enum GET_PROG_PARMS {
 	GET_PROG_PARMS_GOOD,
@@ -295,7 +295,7 @@ struct program_parameters prog_parms;
 
 int main(int argc, char *argv[])
 {
-	struct sigaction sigterm_action;
+	struct sigaction sigint_action;
 	int tx_sockfd, rx_sockfd;
 	struct tx_thread_arguments tx_thread_args;
 	struct rx_thread_arguments rx_thread_args;
@@ -316,7 +316,7 @@ int main(int argc, char *argv[])
 	prepare_thread_args(&tx_thread_args, &rx_thread_args, &prog_parms,
 		&tx_sockfd, &rx_sockfd);
 
-	setup_sigterm_hdlr(&sigterm_action);
+	setup_sigint_hdlr(&sigint_action);
 
 	print_prog_header(&prog_parms);
 
@@ -351,15 +351,15 @@ void debug_fn_name(const char *s)
 
 
 /*
- * Setup things needed for the sigterm handler
+ * Setup things needed for the sigint handler
  */
-void setup_sigterm_hdlr(struct sigaction *sigterm_action)
+void setup_sigint_hdlr(struct sigaction *sigint_action)
 {
 
 
 	debug_fn_name(__func__);
 
-	set_sigterm_hdlr(sigterm_action);
+	set_sigint_hdlr(sigint_action);
 
 }
 
@@ -387,27 +387,27 @@ void print_prog_header(const struct program_parameters *prog_parms)
 
 
 /*
- * Replaces SIGTERM handler
+ * Replaces SIGINT handler
  */
-void set_sigterm_hdlr(struct sigaction *sigterm_action)
+void set_sigint_hdlr(struct sigaction *sigint_action)
 {
 
 
 	debug_fn_name(__func__);
 
-	sigterm_action->sa_handler = sigterm_hdlr;
-	sigemptyset(&(sigterm_action->sa_mask));
-	sigterm_action->sa_flags = 0;
+	sigint_action->sa_handler = sigint_hdlr;
+	sigemptyset(&(sigint_action->sa_mask));
+	sigint_action->sa_flags = 0;
 
-	sigaction(SIGINT, sigterm_action, NULL);
+	sigaction(SIGINT, sigint_action, NULL);
 
 }
 
 
 /*
- * Called upon SIGTERM
+ * Called upon SIGINT 
  */
-void sigterm_hdlr(int signum)
+void sigint_hdlr(int signum)
 {
 	char dstmacpbuf[ENET_PADDR_MAXSZ];
 	char dstmachost[1024]; /* see ether_ntoh.c in glibc for size */
@@ -511,15 +511,11 @@ enum GET_CLI_OPTS get_cli_opts(const int argc,
 
 	debug_fn_name(__func__);
 
-	while ( (opt = getopt(argc, argv, "I:abni:")) != -1) {
+	while ( (opt = getopt(argc, argv, "I:bn")) != -1) {
 		switch (opt) {
 		case 'I':
 			strncpy(prog_opts->iface, optarg, IFNAMSIZ);
 			prog_opts->iface[IFNAMSIZ-1] = 0;
-			break;
-		case 'a':
-			/* reserved for listening on all interfaces
-			 * (by setting ifindex on rx socket to 0) */
 			break;
 		case 'b':
 			prog_opts->dst_type = bcast;
