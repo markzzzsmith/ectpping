@@ -99,6 +99,8 @@ void debug_fn_name(const char *s);
 
 void setup_sigterm_hdlr(struct sigaction *sigterm_action);
 
+void print_prog_header(const struct program_parameters *prog_parms);
+
 void set_sigterm_hdlr(struct sigaction *sigterm_action);
 
 void sigterm_hdlr(int signum);
@@ -266,15 +268,20 @@ enum CLOSE_RX_SKT close_rx_socket(int *rx_sockfd);
  */
 
 /*
- * Toggled by sigterm, indicating to rx thread to stop
- */
-int quit_program;
-
-/*
  * tx & rx thread handles
  */
 pthread_t tx_thread_hdl;
 pthread_t rx_thread_hdl;
+
+
+/*
+ * rtt and other stats
+ */
+unsigned int txed_pkts = 0;
+unsigned int rxed_pkts = 0;
+unsigned long min_rtt = 1000000; /* 1 second to start with */
+unsigned long max_rtt = 0;
+unsigned long sum_rtts = 0;
 
 
 /*
@@ -306,6 +313,8 @@ int main(int argc, char *argv[])
 		&tx_sockfd, &rx_sockfd);
 
 	setup_sigterm_hdlr(&sigterm_action);
+
+	print_prog_header(&prog_parms);
 
 	pthread_create(&tx_thread_hdl, NULL, (void *)tx_thread,
 		&tx_thread_args);
@@ -346,8 +355,29 @@ void setup_sigterm_hdlr(struct sigaction *sigterm_action)
 
 	debug_fn_name(__func__);
 
-	quit_program = 0;
 	set_sigterm_hdlr(sigterm_action);
+
+}
+
+
+/*
+ * Print program header text
+ */
+void print_prog_header(const struct program_parameters *prog_parms)
+{
+	char dstmacpbuf[ENET_PADDR_MAXSZ];
+	char dstmachost[1024]; /* see ether_ntoh.c in glibc for size */
+
+
+	enet_ntop(prog_parms->dstmac, ENET_NTOP_UNIX, dstmacpbuf,
+		ENET_PADDR_MAXSZ);
+
+	if (ether_ntohost(dstmachost, (struct ether_addr *)prog_parms->dstmac)
+		!= 0)
+		strncpy(dstmachost, dstmacpbuf, ENET_PADDR_MAXSZ);
+
+	printf("ETHERPING %s (%s) using %s\n", dstmachost,
+		dstmacpbuf, prog_parms->iface);
 
 }
 
@@ -379,12 +409,19 @@ void sigterm_hdlr(int signum)
 
 	debug_fn_name(__func__);
 
-	if (quit_program) /* SIGTERM received twice, hard exit program */
-		exit(0);
-
-	quit_program = 1;
-
 	pthread_cancel(tx_thread_hdl);
+	pthread_cancel(rx_thread_hdl);
+
+	printf("\n");
+	printf("--- etherping statistics ---\n");
+	printf("%d packets transmitted, %d packets received, "
+		"%d%% packet loss\n",
+		txed_pkts, rxed_pkts, ((txed_pkts - rxed_pkts) / txed_pkts) *
+		100);
+	printf("rtt min/avg/max = %ld/%ld/%ld us\n", min_rtt,
+		sum_rtts/rxed_pkts, max_rtt);
+
+	exit(0);
 
 }
 
@@ -448,9 +485,9 @@ enum GET_CLI_OPTS get_cli_opts(const int argc,
 
 	debug_fn_name(__func__);
 
-	while ( (opt = getopt(argc, argv, "i:abn")) != -1) {
+	while ( (opt = getopt(argc, argv, "I:abni:")) != -1) {
 		switch (opt) {
-		case 'i':
+		case 'I':
 			strncpy(prog_opts->iface, optarg, IFNAMSIZ);
 			prog_opts->iface[IFNAMSIZ-1] = 0;
 			break;
@@ -761,9 +798,7 @@ void tx_thread(struct tx_thread_arguments *tx_thread_args)
 
 	debug_fn_name(__func__);
 
-	while (!quit_program) {
-
-		usleep(1000000);
+	while (true) {
 
 		gettimeofday(&eping_payload.tv, NULL);
 
@@ -775,7 +810,11 @@ void tx_thread(struct tx_thread_arguments *tx_thread_args)
 		send(*tx_thread_args->tx_sockfd, tx_frame_buf, ectp_frame_len,
 			MSG_DONTWAIT);	
 
+		txed_pkts++;
+
 		eping_payload.seq_num++;
+
+		usleep(1000000);
 
 	}
 
@@ -924,6 +963,14 @@ void print_rxed_packet(const struct program_parameters *prog_parms,
 	memcpy(&eping_payload, ectp_data, sizeof(struct etherping_payload));
 	timersub(pkt_arrived, &eping_payload.tv, &tv_diff);
 
+	sum_rtts += tv_diff.tv_usec;
+
+	if (tv_diff.tv_usec < min_rtt)
+		min_rtt = tv_diff.tv_usec;
+
+	if (tv_diff.tv_usec > max_rtt)
+		max_rtt = tv_diff.tv_usec;
+
 	enet_ntop(srcmac, ENET_NTOP_UNIX, srcmacpbuf, ENET_PADDR_MAXSZ);
 
 	if (!prog_parms->no_resolve) {
@@ -962,7 +1009,7 @@ void process_rxed_frames(int *rx_sockfd,
 	debug_fn_name(__func__);
 
 
-	while (!quit_program) {
+	while (true) {
 
 		rx_new_packet(rx_sockfd, pkt_buf, sizeof(pkt_buf),
 			&pkt_arrived, &rxed_pkt_type, &rxed_pkt_len,
@@ -972,6 +1019,8 @@ void process_rxed_frames(int *rx_sockfd,
 			rxed_pkt_len, prog_parms, &ectp_data,
 			&ectp_data_size) ==
 			ECTP_PKT_VALID_GOOD) {
+
+			rxed_pkts++;
 
 			print_rxed_packet(prog_parms, &pkt_arrived,
 				srcmac, rxed_pkt_len, ectp_data,
