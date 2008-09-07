@@ -51,6 +51,7 @@ struct program_parameters {
 	unsigned int ectp_user_data_size;
 	bool no_resolve;
 	bool zero_pkt_output;
+	unsigned int interval_ms;
 };
 
 
@@ -63,6 +64,7 @@ struct program_options {
 	char *uc_dst_str; /* mac address or /etc/ethers hostname string */
 	bool no_resolve;
 	bool zero_pkt_output;
+	unsigned int interval_ms;
 };
 
 
@@ -500,6 +502,8 @@ void set_default_prog_opts(struct program_options *prog_opts)
 
 	prog_opts->zero_pkt_output = false;
 
+	prog_opts->interval_ms = 1000;
+
 }
 
 
@@ -515,7 +519,7 @@ enum GET_CLI_OPTS get_cli_opts(const int argc,
 
 	debug_fn_name(__func__);
 
-	while ( (opt = getopt(argc, argv, "I:bnz")) != -1) {
+	while ( (opt = getopt(argc, argv, "I:bnzi:")) != -1) {
 		switch (opt) {
 		case 'I':
 			strncpy(prog_opts->iface, optarg, IFNAMSIZ);
@@ -529,6 +533,9 @@ enum GET_CLI_OPTS get_cli_opts(const int argc,
 			break;
 		case 'z':
 			prog_opts->zero_pkt_output = true;
+			break;
+		case 'i':
+			prog_opts->interval_ms = atoi(optarg);
 			break;
 		}
 	}
@@ -599,6 +606,8 @@ enum PROCESS_PROG_OPTS process_prog_opts(const struct program_options
 	prog_parms->no_resolve = prog_opts->no_resolve;
 
 	prog_parms->zero_pkt_output = prog_opts->zero_pkt_output;
+
+	prog_parms->interval_ms = prog_opts->interval_ms;
 
 	return PROCESS_PROG_OPTS_GOOD;
 
@@ -848,7 +857,7 @@ void tx_thread(struct tx_thread_arguments *tx_thread_args)
 
 		eping_payload.seq_num++;
 
-		usleep(1000000);
+		usleep(tx_thread_args->prog_parms->interval_ms * 1000);
 
 	}
 
