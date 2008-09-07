@@ -46,6 +46,7 @@ struct program_parameters {
 	int ifindex;
 	uint8_t srcmac[ETH_ALEN];
 	uint8_t dstmac[ETH_ALEN];
+	bool uc_dstmac;
 	uint8_t *ectp_user_data;
 	unsigned int ectp_user_data_size;
 	bool no_resolve;
@@ -283,6 +284,10 @@ unsigned long min_rtt = 1000000; /* 1 second to start with */
 unsigned long max_rtt = 0;
 unsigned long sum_rtts = 0;
 
+/*
+ * Program parameters (needs to be global so signal handler can see it)
+ */
+struct program_parameters prog_parms;
 
 /*
  * Functions
@@ -291,7 +296,6 @@ unsigned long sum_rtts = 0;
 int main(int argc, char *argv[])
 {
 	struct sigaction sigterm_action;
-	struct program_parameters prog_parms;
 	int tx_sockfd, rx_sockfd;
 	struct tx_thread_arguments tx_thread_args;
 	struct rx_thread_arguments rx_thread_args;
@@ -405,6 +409,8 @@ void set_sigterm_hdlr(struct sigaction *sigterm_action)
  */
 void sigterm_hdlr(int signum)
 {
+	char dstmacpbuf[ENET_PADDR_MAXSZ];
+	char dstmachost[1024]; /* see ether_ntoh.c in glibc for size */
 
 
 	debug_fn_name(__func__);
@@ -412,14 +418,34 @@ void sigterm_hdlr(int signum)
 	pthread_cancel(tx_thread_hdl);
 	pthread_cancel(rx_thread_hdl);
 
-	printf("\n");
-	printf("--- etherping statistics ---\n");
-	printf("%d packets transmitted, %d packets received, "
-		"%d%% packet loss\n",
-		txed_pkts, rxed_pkts, ((txed_pkts - rxed_pkts) / txed_pkts) *
-		100);
-	printf("rtt min/avg/max = %ld/%ld/%ld us\n", min_rtt,
-		sum_rtts/rxed_pkts, max_rtt);
+	putchar('\n');
+
+	enet_ntop(prog_parms.dstmac, ENET_NTOP_UNIX, dstmacpbuf,
+			ENET_PADDR_MAXSZ);
+
+	if (ether_ntohost(dstmachost, (struct ether_addr *)prog_parms.dstmac)
+			!= 0)
+		strncpy(dstmachost, dstmacpbuf, ENET_PADDR_MAXSZ);
+
+	printf("----%s ETHERPING Statistics----\n", dstmachost);
+
+	printf("%d packets transmitted, %d packets received", txed_pkts,
+		rxed_pkts);
+		
+	if (txed_pkts > 0) {
+		if (rxed_pkts <= txed_pkts) 			
+			printf(", %d%% packet loss\n",
+				((txed_pkts - rxed_pkts) / txed_pkts) * 100);
+		else
+			printf(", %d%% packet increase\n",
+				(rxed_pkts / txed_pkts) * 100);
+
+		if (rxed_pkts > 0)
+			printf("round-trip (us)  min/avg/max = %ld/%ld/%ld\n",
+				min_rtt, sum_rtts/rxed_pkts, max_rtt);
+	} else {
+		putchar('\n');
+	}
 
 	exit(0);
 
@@ -546,6 +572,7 @@ enum PROCESS_PROG_OPTS process_prog_opts(const struct program_options
 
 	switch (prog_opts->dst_type) {
 	case ucast:
+		prog_parms->uc_dstmac = true;
 		if (ether_hostton(prog_opts->uc_dst_str,
 			(struct ether_addr *)prog_parms->dstmac) == 0) {
 			break;
@@ -556,10 +583,12 @@ enum PROCESS_PROG_OPTS process_prog_opts(const struct program_options
 		}
 		break;
 	case bcast:
+		prog_parms->uc_dstmac = false;
 		memcpy(prog_parms->dstmac, bcast_addr, ETH_ALEN);
 		break;
 	case mcast:
 	default:
+		prog_parms->uc_dstmac = false;
 		memcpy(prog_parms->dstmac, lc_mcaddr, ETH_ALEN);
 		break;
 	}
@@ -977,10 +1006,17 @@ void print_rxed_packet(const struct program_parameters *prog_parms,
 		if (ether_ntohost(srcmachost, (struct ether_addr *)srcmac) !=
 			0)
 			sprintf(srcmachost,"(unknown)");
-		printf("%d bytes from %10s (%s): ectp_seq=%d time=%ld "
-		       "us\n", pkt_len,
-			srcmachost, srcmacpbuf, eping_payload.seq_num,
-			tv_diff.tv_usec);
+		if (prog_parms->uc_dstmac) {
+			printf("%d bytes from %s (%s): ectp_seq=%d time=%ld "
+			       "us\n", pkt_len,
+				srcmachost, srcmacpbuf, eping_payload.seq_num,
+				tv_diff.tv_usec);
+		} else {
+			printf("%d bytes from %10s (%s): ectp_seq=%d time=%ld "
+			       "us\n", pkt_len,
+				srcmachost, srcmacpbuf, eping_payload.seq_num,
+				tv_diff.tv_usec);
+		}
 
 	} else {
 		printf("%d bytes from %s: ectp_seq=%d time=%ld us\n",
