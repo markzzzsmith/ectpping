@@ -50,6 +50,7 @@ struct program_parameters {
 	uint8_t *ectp_user_data;
 	unsigned int ectp_user_data_size;
 	bool no_resolve;
+	bool zero_pkt_output;
 };
 
 
@@ -61,6 +62,7 @@ struct program_options {
 	enum { ucast, mcast, bcast } dst_type;
 	char *uc_dst_str; /* mac address or /etc/ethers hostname string */
 	bool no_resolve;
+	bool zero_pkt_output;
 };
 
 
@@ -496,6 +498,8 @@ void set_default_prog_opts(struct program_options *prog_opts)
 
 	prog_opts->no_resolve = false;
 
+	prog_opts->zero_pkt_output = false;
+
 }
 
 
@@ -511,7 +515,7 @@ enum GET_CLI_OPTS get_cli_opts(const int argc,
 
 	debug_fn_name(__func__);
 
-	while ( (opt = getopt(argc, argv, "I:bn")) != -1) {
+	while ( (opt = getopt(argc, argv, "I:bnz")) != -1) {
 		switch (opt) {
 		case 'I':
 			strncpy(prog_opts->iface, optarg, IFNAMSIZ);
@@ -522,6 +526,9 @@ enum GET_CLI_OPTS get_cli_opts(const int argc,
 			break;
 		case 'n':
 			prog_opts->no_resolve = true;
+			break;
+		case 'z':
+			prog_opts->zero_pkt_output = true;
 			break;
 		}
 	}
@@ -590,6 +597,8 @@ enum PROCESS_PROG_OPTS process_prog_opts(const struct program_options
 	}
 
 	prog_parms->no_resolve = prog_opts->no_resolve;
+
+	prog_parms->zero_pkt_output = prog_opts->zero_pkt_output;
 
 	return PROCESS_PROG_OPTS_GOOD;
 
@@ -996,28 +1005,33 @@ void print_rxed_packet(const struct program_parameters *prog_parms,
 	if (tv_diff.tv_usec > max_rtt)
 		max_rtt = tv_diff.tv_usec;
 
-	enet_ntop(srcmac, ENET_NTOP_UNIX, srcmacpbuf, ENET_PADDR_MAXSZ);
+	if (!prog_parms->zero_pkt_output) {
 
-	if (!prog_parms->no_resolve) {
-		if (ether_ntohost(srcmachost, (struct ether_addr *)srcmac) !=
-			0)
-			sprintf(srcmachost,"(unknown)");
-		if (prog_parms->uc_dstmac) {
-			printf("%d bytes from %s (%s): ectp_seq=%d time=%ld "
-			       "us\n", pkt_len,
-				srcmachost, srcmacpbuf, eping_payload.seq_num,
-				tv_diff.tv_usec);
+		enet_ntop(srcmac, ENET_NTOP_UNIX, srcmacpbuf, ENET_PADDR_MAXSZ);
+
+		if (!prog_parms->no_resolve) {
+			if (ether_ntohost(srcmachost,
+				(struct ether_addr *)srcmac) != 0)
+				sprintf(srcmachost,"(unknown)");
+			if (prog_parms->uc_dstmac) {
+				printf("%d bytes from %s (%s):"
+				       " ectp_seq=%d time=%ld us\n", pkt_len,
+				       srcmachost, srcmacpbuf,
+				       eping_payload.seq_num,
+				       tv_diff.tv_usec);
+			} else {
+				printf("%d bytes from %10s (%s):"
+				       " ectp_seq=%d time=%ld us\n", pkt_len,
+					srcmachost, srcmacpbuf,
+					eping_payload.seq_num,
+					tv_diff.tv_usec);
+			}
+
 		} else {
-			printf("%d bytes from %10s (%s): ectp_seq=%d time=%ld "
-			       "us\n", pkt_len,
-				srcmachost, srcmacpbuf, eping_payload.seq_num,
+			printf("%d bytes from %s: ectp_seq=%d time=%ld us\n",
+				pkt_len, srcmacpbuf, eping_payload.seq_num,
 				tv_diff.tv_usec);
 		}
-
-	} else {
-		printf("%d bytes from %s: ectp_seq=%d time=%ld us\n",
-			pkt_len, srcmacpbuf, eping_payload.seq_num,
-			tv_diff.tv_usec);
 	}
 
 }
