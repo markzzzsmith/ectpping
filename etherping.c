@@ -46,8 +46,9 @@ struct program_parameters {
 	int ifindex;
 	uint8_t srcmac[ETH_ALEN];
 	uint8_t dstmac[ETH_ALEN];
-	uint8_t *ectp_data;
-	unsigned int ectp_data_size;
+	uint8_t *ectp_user_data;
+	unsigned int ectp_user_data_size;
+	bool no_resolve;
 };
 
 
@@ -58,6 +59,7 @@ struct program_options {
 	char iface[IFNAMSIZ];
 	enum { ucast, mcast, bcast } dst_type;
 	char *uc_dst_str; /* mac address or /etc/ethers hostname string */
+	bool no_resolve;
 };
 
 
@@ -71,11 +73,20 @@ struct tx_thread_arguments {
 
 
 /*
- *
+ * Arguments passed to the RX thread
  */
 struct rx_thread_arguments {
 	struct program_parameters *prog_parms;
 	int *rx_sockfd;
+};
+
+
+/*
+ *
+ */
+struct etherping_payload {
+	uint32_t seq_num;
+	struct timeval tv;
 };
 
 
@@ -188,13 +199,16 @@ void build_ectp_eth_hdr(const uint8_t *srcmac,
 enum BUILD_ECTP_FRAME {
 	BUILD_ECTP_FRAME_GOOD,
 	BUILD_ECTP_FRAME_BADBUFSIZE,
-	BUILD_ECTP_FRAME_MTUTOOSMALL
+	BUILD_ECTP_FRAME_MTUTOOSMALL,
+	BUILD_ECTP_FRAME_NOMEM
 };
 enum BUILD_ECTP_FRAME build_ectp_frame(
 				   const struct program_parameters *prog_parms,
-				   uint8_t pkt_buf[],
-				   const unsigned int pkt_buf_sz,
-				   unsigned int *ectp_packet_len);
+				   uint8_t frame_buf[],
+				   const unsigned int frame_buf_sz,
+				   const uint8_t *prog_data,
+				   const unsigned int prog_data_size,
+				   unsigned int *ectp_frame_len);
 
 void tx_thread(struct tx_thread_arguments *tx_thread_args);
 
@@ -213,7 +227,9 @@ enum ECTP_PKT_VALID ectp_pkt_valid(const struct ectp_packet *ectp_pkt,
 				   uint8_t **ectp_data,
 				   unsigned int *ectp_data_size);
 
-void print_rxed_packet(const uint8_t *srcmac,
+void print_rxed_packet(const struct program_parameters *prog_parms,
+		       const struct timeval *pkt_arrived,
+		       const uint8_t *srcmac,
 		       const unsigned int pkt_len,
 		       const uint8_t *ectp_data,
 		       const unsigned int ectp_data_size);
@@ -224,6 +240,7 @@ void process_rxed_frames(int *rx_sockfd,
 void rx_new_packet(int *sockfd,
 		  unsigned char *pkt_buf,
 		  const unsigned int pkt_buf_sz,
+		  struct timeval *pkt_arrived,
 		  unsigned char *pkt_type,
 		  unsigned int *pkt_len,
 		  uint8_t *srcmac);
@@ -280,8 +297,8 @@ int main(int argc, char *argv[])
 
 	get_prog_parms(argc, argv, &prog_parms);
 
-	prog_parms.ectp_data = ectp_data;
-	prog_parms.ectp_data_size = sizeof(ectp_data);
+	prog_parms.ectp_user_data = ectp_data;
+	prog_parms.ectp_user_data_size = sizeof(ectp_data);
 
 	open_sockets(&tx_sockfd, &rx_sockfd, prog_parms.ifindex);
 
@@ -414,6 +431,8 @@ void set_default_prog_opts(struct program_options *prog_opts)
 
 	prog_opts->dst_type = mcast;
 
+	prog_opts->no_resolve = false;
+
 }
 
 
@@ -429,7 +448,7 @@ enum GET_CLI_OPTS get_cli_opts(const int argc,
 
 	debug_fn_name(__func__);
 
-	while ( (opt = getopt(argc, argv, "i:ab")) != -1) {
+	while ( (opt = getopt(argc, argv, "i:abn")) != -1) {
 		switch (opt) {
 		case 'i':
 			strncpy(prog_opts->iface, optarg, IFNAMSIZ);
@@ -441,6 +460,9 @@ enum GET_CLI_OPTS get_cli_opts(const int argc,
 			break;
 		case 'b':
 			prog_opts->dst_type = bcast;
+			break;
+		case 'n':
+			prog_opts->no_resolve = true;
 			break;
 		}
 	}
@@ -505,6 +527,7 @@ enum PROCESS_PROG_OPTS process_prog_opts(const struct program_options
 		break;
 	}
 
+	prog_parms->no_resolve = prog_opts->no_resolve;
 
 	return PROCESS_PROG_OPTS_GOOD;
 
@@ -675,10 +698,14 @@ enum BUILD_ECTP_FRAME build_ectp_frame(
 				   const struct program_parameters *prog_parms,
 				   uint8_t frame_buf[],
 				   const unsigned int frame_buf_sz,
+				   const uint8_t *prog_data,
+				   const unsigned int prog_data_size,
 				   unsigned int *ectp_frame_len)
 {
 	unsigned int ifmtu;
 	unsigned int ectp_pkt_len;
+	unsigned int frame_payload_size;
+	uint8_t *frame_payload;
 
 
 	if (sizeof(struct ether_header) > frame_buf_sz)
@@ -687,7 +714,9 @@ enum BUILD_ECTP_FRAME build_ectp_frame(
 	build_ectp_eth_hdr(prog_parms->srcmac, prog_parms->dstmac,
 		(struct ether_header *)&frame_buf[0]);
 	
-	ectp_pkt_len = ectp_calc_packet_size(1, prog_parms->ectp_data_size);
+	frame_payload_size = prog_data_size + prog_parms->ectp_user_data_size;
+
+	ectp_pkt_len = ectp_calc_packet_size(1, frame_payload_size);
 
 	if (ectp_pkt_len > (frame_buf_sz - ETH_HLEN))
 		return BUILD_ECTP_FRAME_BADBUFSIZE;
@@ -697,12 +726,21 @@ enum BUILD_ECTP_FRAME build_ectp_frame(
 	if (ectp_pkt_len > ifmtu)
 		return BUILD_ECTP_FRAME_MTUTOOSMALL;
 
+	frame_payload = malloc(frame_payload_size);
+	if (frame_payload == NULL)
+		return BUILD_ECTP_FRAME_NOMEM;
+
+	memcpy(frame_payload, prog_data, prog_data_size);
+	memcpy(&frame_payload[prog_data_size], prog_parms->ectp_user_data,
+		prog_parms->ectp_user_data_size);
+
 	ectp_build_packet(0, (struct ether_addr *)prog_parms->srcmac,
-		1, getpid(), prog_parms->ectp_data,
-		prog_parms->ectp_data_size, &frame_buf[ETH_HLEN],
-		frame_buf_sz - ETH_HLEN, 0x00);
+		1, getpid(), frame_payload, frame_payload_size,
+		&frame_buf[ETH_HLEN], frame_buf_sz - ETH_HLEN, 0x00);
 
 	*ectp_frame_len = ETH_HLEN + ectp_pkt_len;
+
+	free(frame_payload);
 
 	return BUILD_ECTP_FRAME_GOOD;
 
@@ -716,16 +754,28 @@ void tx_thread(struct tx_thread_arguments *tx_thread_args)
 {
 	uint8_t tx_frame_buf[0xffff];
 	unsigned int ectp_frame_len;
-
+	struct etherping_payload eping_payload = {
+		.seq_num = 0,
+	};
+	
 
 	debug_fn_name(__func__);
 
 	while (!quit_program) {
+
+		gettimeofday(&eping_payload.tv, NULL);
+
 		build_ectp_frame(tx_thread_args->prog_parms, tx_frame_buf,
-			sizeof(tx_frame_buf), &ectp_frame_len);
+			sizeof(tx_frame_buf), (uint8_t *)&eping_payload,
+			sizeof(struct etherping_payload),
+			&ectp_frame_len);
+
 		send(*tx_thread_args->tx_sockfd, tx_frame_buf, ectp_frame_len,
-			0);	
-		sleep(1);
+			MSG_DONTWAIT);	
+
+		eping_payload.seq_num++;
+
+		usleep(1000000);
 	}
 
 }
@@ -857,22 +907,38 @@ enum ECTP_PKT_VALID ectp_pkt_valid(const struct ectp_packet *ectp_pkt,
 /*
  * Print data about received packet
  */
-void print_rxed_packet(const uint8_t *srcmac,
+void print_rxed_packet(const struct program_parameters *prog_parms,
+		       const struct timeval *pkt_arrived,
+		       const uint8_t *srcmac,
 		       const unsigned int pkt_len,
 		       const uint8_t *ectp_data,
 		       const unsigned int ectp_data_size)
 {
 	char srcmacpbuf[ENET_PADDR_MAXSZ];
 	char srcmachost[1024]; /* see ether_ntoh.c in glibc for size */
+	struct etherping_payload eping_payload;
+	struct timeval tv_diff;
 
-	
+
+	memcpy(&eping_payload, ectp_data, sizeof(struct etherping_payload));
+	timersub(pkt_arrived, &eping_payload.tv, &tv_diff);
+
 	enet_ntop(srcmac, ENET_NTOP_UNIX, srcmacpbuf, ENET_PADDR_MAXSZ);
 
- 	if (ether_ntohost(srcmachost, (struct ether_addr *)srcmac) == 0)
-		printf("%d bytes from %s (%s): time=%d\n", pkt_len,
-			srcmachost, srcmacpbuf, 0);
-	else
-		printf("%d bytes from %s: time=%d\n", pkt_len, srcmacpbuf, 0);
+	if (!prog_parms->no_resolve) {
+		if (ether_ntohost(srcmachost, (struct ether_addr *)srcmac) !=
+			0)
+			sprintf(srcmachost,"(unknown)");
+		printf("%d bytes from %10s (%s): ectp_seq=%d time=%ld "
+		       "us\n", pkt_len,
+			srcmachost, srcmacpbuf, eping_payload.seq_num,
+			tv_diff.tv_usec);
+
+	} else {
+		printf("%d bytes from %s: ectp_seq=%d time=%ld us\n",
+			pkt_len, srcmacpbuf, eping_payload.seq_num,
+			tv_diff.tv_usec);
+	}
 
 }
 
@@ -892,6 +958,7 @@ void process_rxed_frames(int *rx_sockfd,
 	int select_result;
 	uint8_t *ectp_data;
 	unsigned int ectp_data_size;
+	struct timeval pkt_arrived;
 
 
 	debug_fn_name(__func__);
@@ -903,7 +970,7 @@ void process_rxed_frames(int *rx_sockfd,
 		FD_SET(*rx_sockfd, &select_fd_set);
 
 		select_tout.tv_sec = 0;
-		select_tout.tv_usec = 100000; 
+		select_tout.tv_usec = 10000; 
 
 		/* need to error check select result */
 		select_result = select(*rx_sockfd+1, &select_fd_set, NULL,
@@ -911,15 +978,17 @@ void process_rxed_frames(int *rx_sockfd,
 
 		if (select_result > 0) {
 			rx_new_packet(rx_sockfd, pkt_buf, sizeof(pkt_buf),
-				&rxed_pkt_type, &rxed_pkt_len, srcmac);
+				&pkt_arrived, &rxed_pkt_type, &rxed_pkt_len,
+				srcmac);
 
 			if (ectp_pkt_valid((struct ectp_packet *)pkt_buf,
 				rxed_pkt_len, prog_parms, &ectp_data,
 				&ectp_data_size) ==
 				ECTP_PKT_VALID_GOOD) {
 
-				print_rxed_packet(srcmac, rxed_pkt_len,
-					ectp_data, ectp_data_size);
+				print_rxed_packet(prog_parms, &pkt_arrived,
+					srcmac, rxed_pkt_len, ectp_data,
+					ectp_data_size);
 
 			}
 
@@ -937,6 +1006,7 @@ void process_rxed_frames(int *rx_sockfd,
 void rx_new_packet(int *rx_sockfd,
 		  unsigned char *pkt_buf,
 		  const unsigned int pkt_buf_sz,
+		  struct timeval *pkt_arrived,
 		  unsigned char *pkt_type,
 		  unsigned int *pkt_len,
 		  uint8_t *srcmac)
@@ -954,6 +1024,8 @@ void rx_new_packet(int *rx_sockfd,
 	*pkt_len = recvfrom(*rx_sockfd, pkt_buf, pkt_buf_sz,
 		MSG_DONTWAIT, (struct sockaddr *) &sa_ll,
 		(socklen_t *) &sa_ll_len );
+
+	ioctl(*rx_sockfd, SIOCGSTAMP, pkt_arrived);
 
 	memcpy(srcmac, sa_ll.sll_addr, ETH_ALEN);
 
