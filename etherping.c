@@ -165,14 +165,6 @@ enum GET_IFMAC {
 enum GET_IFMAC get_ifmac(const char iface[IFNAMSIZ],
 			 unsigned char ifmac[ETH_ALEN]);
 
-enum GET_IFMTU {
-	GET_IFMTU_GOOD,
-	GET_IFMTU_BADSOCKET,
-	GET_IFMTU_BADIFACE
-};
-enum GET_IFMTU get_ifmtu(const char iface[IFNAMSIZ],
-			 unsigned int *ifmtu);
-
 
 void open_sockets(int *tx_sockfd, int *rx_sockfd, const int ifindex);
 
@@ -206,7 +198,6 @@ void build_ectp_eth_hdr(const uint8_t *srcmac,
 enum BUILD_ECTP_FRAME {
 	BUILD_ECTP_FRAME_GOOD,
 	BUILD_ECTP_FRAME_BADBUFSIZE,
-	BUILD_ECTP_FRAME_MTUTOOSMALL,
 	BUILD_ECTP_FRAME_NOMEM
 };
 enum BUILD_ECTP_FRAME build_ectp_frame(
@@ -697,30 +688,6 @@ enum GET_IFMAC get_ifmac(const char iface[IFNAMSIZ],
 
 
 /*
- * Routine to get the MTU of the specified interface 
- */
-enum GET_IFMTU get_ifmtu(const char iface[IFNAMSIZ],
-			 unsigned int *ifmtu)
-{
-	struct ifreq ifr;
-
-
-	debug_fn_name(__func__);
-
-
-	if (do_ifreq_ioctl(SIOCGIFMTU, iface, &ifr) == DO_IFREQ_IOCTL_GOOD) {
-		*ifmtu = ifr.ifr_mtu;
-		return GET_IFMTU_GOOD;
-	} else {
-		return GET_IFMTU_BADIFACE;
-	}
-
-
-
-}
-
-
-/*
  * Routine to open TX and RX PF_PACKET sockets
  */
 void open_sockets(int *tx_sockfd, int *rx_sockfd, const int ifindex)
@@ -783,7 +750,6 @@ enum BUILD_ECTP_FRAME build_ectp_frame(
 				   const unsigned int prog_data_size,
 				   unsigned int *ectp_frame_len)
 {
-	unsigned int ifmtu;
 	unsigned int ectp_pkt_len;
 	unsigned int frame_payload_size;
 	uint8_t *frame_payload;
@@ -801,11 +767,6 @@ enum BUILD_ECTP_FRAME build_ectp_frame(
 
 	if (ectp_pkt_len > (frame_buf_sz - ETH_HLEN))
 		return BUILD_ECTP_FRAME_BADBUFSIZE;
-
-	get_ifmtu(prog_parms->iface, &ifmtu);
-
-	if (ectp_pkt_len > ifmtu)
-		return BUILD_ECTP_FRAME_MTUTOOSMALL;
 
 	frame_payload = malloc(frame_payload_size);
 	if (frame_payload == NULL)
