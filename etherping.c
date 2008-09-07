@@ -763,6 +763,8 @@ void tx_thread(struct tx_thread_arguments *tx_thread_args)
 
 	while (!quit_program) {
 
+		usleep(1000000);
+
 		gettimeofday(&eping_payload.tv, NULL);
 
 		build_ectp_frame(tx_thread_args->prog_parms, tx_frame_buf,
@@ -775,7 +777,6 @@ void tx_thread(struct tx_thread_arguments *tx_thread_args)
 
 		eping_payload.seq_num++;
 
-		usleep(1000000);
 	}
 
 }
@@ -953,9 +954,6 @@ void process_rxed_frames(int *rx_sockfd,
 	unsigned char rxed_pkt_type;
 	unsigned int rxed_pkt_len;
 	uint8_t srcmac[ETH_ALEN];
-	fd_set select_fd_set;
-	struct timeval select_tout;
-	int select_result;
 	uint8_t *ectp_data;
 	unsigned int ectp_data_size;
 	struct timeval pkt_arrived;
@@ -966,33 +964,19 @@ void process_rxed_frames(int *rx_sockfd,
 
 	while (!quit_program) {
 
-		FD_ZERO(&select_fd_set);
-		FD_SET(*rx_sockfd, &select_fd_set);
+		rx_new_packet(rx_sockfd, pkt_buf, sizeof(pkt_buf),
+			&pkt_arrived, &rxed_pkt_type, &rxed_pkt_len,
+			srcmac);
 
-		select_tout.tv_sec = 0;
-		select_tout.tv_usec = 10000; 
+		if (ectp_pkt_valid((struct ectp_packet *)pkt_buf,
+			rxed_pkt_len, prog_parms, &ectp_data,
+			&ectp_data_size) ==
+			ECTP_PKT_VALID_GOOD) {
 
-		/* need to error check select result */
-		select_result = select(*rx_sockfd+1, &select_fd_set, NULL,
-			NULL, &select_tout);
+			print_rxed_packet(prog_parms, &pkt_arrived,
+				srcmac, rxed_pkt_len, ectp_data,
+				ectp_data_size);
 
-		if (select_result > 0) {
-			rx_new_packet(rx_sockfd, pkt_buf, sizeof(pkt_buf),
-				&pkt_arrived, &rxed_pkt_type, &rxed_pkt_len,
-				srcmac);
-
-			if (ectp_pkt_valid((struct ectp_packet *)pkt_buf,
-				rxed_pkt_len, prog_parms, &ectp_data,
-				&ectp_data_size) ==
-				ECTP_PKT_VALID_GOOD) {
-
-				print_rxed_packet(prog_parms, &pkt_arrived,
-					srcmac, rxed_pkt_len, ectp_data,
-					ectp_data_size);
-
-			}
-
-			
 		}
 
 	}
@@ -1022,7 +1006,7 @@ void rx_new_packet(int *rx_sockfd,
 	sa_ll_len = sizeof(sa_ll);
 
 	*pkt_len = recvfrom(*rx_sockfd, pkt_buf, pkt_buf_sz,
-		MSG_DONTWAIT, (struct sockaddr *) &sa_ll,
+		0, (struct sockaddr *) &sa_ll,
 		(socklen_t *) &sa_ll_len );
 
 	ioctl(*rx_sockfd, SIOCGSTAMP, pkt_arrived);
