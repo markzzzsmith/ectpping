@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <limits.h>
 
 #include <unistd.h>
 #include <sys/types.h>
@@ -275,9 +276,18 @@ pthread_t rx_thread_hdl;
  */
 unsigned int txed_pkts = 0;
 unsigned int rxed_pkts = 0;
-unsigned long min_rtt = 1000000; /* 1 second to start with */
-unsigned long max_rtt = 0;
-unsigned long sum_rtts = 0;
+struct timeval min_rtt = {
+	.tv_sec = INT_MAX,
+	.tv_usec = INT_MAX,
+};
+struct timeval max_rtt = {
+	.tv_sec = 0,
+	.tv_usec = 0,
+};
+struct timeval sum_rtts = {
+	.tv_sec = 0,
+	.tv_usec = 0,
+};
 
 /*
  * Program parameters (needs to be global so signal handler can see it)
@@ -411,6 +421,8 @@ void sigint_hdlr(int signum)
 	debug_fn_name(__func__);
 
 	pthread_cancel(tx_thread_hdl);
+
+	usleep(100000); /* a chance to catch some in flight pkts */
 	pthread_cancel(rx_thread_hdl);
 
 	putchar('\n');
@@ -433,12 +445,24 @@ void sigint_hdlr(int signum)
 				((txed_pkts - rxed_pkts) / (txed_pkts * 1.0))
 					* 100);
 		else
-			printf(", %f times packet increase\n",
+			printf(", %.2f times packet increase\n",
 				(rxed_pkts / (txed_pkts * 1.0)));
 
-		if (rxed_pkts > 0)
-			printf("round-trip (us)  min/avg/max = %ld/%ld/%ld\n",
-				min_rtt, sum_rtts/rxed_pkts, max_rtt);
+		if (rxed_pkts > 0) {
+			long sum_rtts_sec_avg = (sum_rtts.tv_sec * 1000000)/
+				rxed_pkts;
+			
+			printf("round-trip (sec)  min/avg/max/total = "
+				"%ld.%06ld/%ld.%06ld/%ld.%06ld/%ld.%06ld\n",
+				min_rtt.tv_sec, min_rtt.tv_usec,
+				sum_rtts.tv_sec/rxed_pkts,
+				(sum_rtts_sec_avg < 1000000 ?
+					(sum_rtts.tv_usec/rxed_pkts) +
+					sum_rtts_sec_avg :
+					sum_rtts.tv_usec/rxed_pkts),
+				max_rtt.tv_sec, max_rtt.tv_usec,
+				sum_rtts.tv_sec, sum_rtts.tv_usec); 
+		}
 	} else {
 		putchar('\n');
 	}
@@ -753,6 +777,7 @@ enum BUILD_ECTP_FRAME build_ectp_frame(
 	unsigned int ectp_pkt_len;
 	unsigned int frame_payload_size;
 	uint8_t *frame_payload;
+	uint8_t fwdaddrs[3][ETH_ALEN];
 
 
 	if (sizeof(struct ether_header) > frame_buf_sz)
@@ -776,7 +801,12 @@ enum BUILD_ECTP_FRAME build_ectp_frame(
 	memcpy(&frame_payload[prog_data_size], prog_parms->ectp_user_data,
 		prog_parms->ectp_user_data_size);
 
+	memcpy(fwdaddrs[0], prog_parms->srcmac, ETH_ALEN);
+	memcpy(fwdaddrs[1], prog_parms->dstmac, ETH_ALEN);
+	memcpy(fwdaddrs[2], prog_parms->srcmac, ETH_ALEN);
+
 	ectp_build_packet(0, (struct ether_addr *)prog_parms->srcmac,
+	//ectp_build_packet(0, (struct ether_addr *)fwdaddrs,
 		1, getpid(), frame_payload, frame_payload_size,
 		&frame_buf[ETH_HLEN], frame_buf_sz - ETH_HLEN, 0x00);
 
@@ -968,13 +998,17 @@ void print_rxed_packet(const struct program_parameters *prog_parms,
 	memcpy(&eping_payload, ectp_data, sizeof(struct etherping_payload));
 	timersub(pkt_arrived, &eping_payload.tv, &tv_diff);
 
-	sum_rtts += tv_diff.tv_usec;
+	timeradd(&sum_rtts, &tv_diff, &sum_rtts);
 
-	if (tv_diff.tv_usec < min_rtt)
-		min_rtt = tv_diff.tv_usec;
+	if ((tv_diff.tv_sec < min_rtt.tv_sec) ||
+	    ((tv_diff.tv_sec == min_rtt.tv_sec) &&
+	     (tv_diff.tv_usec < min_rtt.tv_usec)))
+		min_rtt = tv_diff;
 
-	if (tv_diff.tv_usec > max_rtt)
-		max_rtt = tv_diff.tv_usec;
+	if ((tv_diff.tv_sec > max_rtt.tv_sec) ||
+	    ((tv_diff.tv_sec == max_rtt.tv_sec) &&
+	     (tv_diff.tv_usec > max_rtt.tv_usec)))
+		max_rtt = tv_diff;
 
 	if (!prog_parms->zero_pkt_output) {
 
@@ -986,22 +1020,29 @@ void print_rxed_packet(const struct program_parameters *prog_parms,
 				sprintf(srcmachost,"(unknown)");
 			if (prog_parms->uc_dstmac) {
 				printf("%d bytes from %s (%s):"
-				       " ectp_seq=%d time=%ld us\n", pkt_len,
+				       " ectp_seq=%d time=%ld.%06ld sec\n",
+				       pkt_len,
 				       srcmachost, srcmacpbuf,
 				       eping_payload.seq_num,
+				       tv_diff.tv_sec,
 				       tv_diff.tv_usec);
 			} else {
-				printf("%d bytes from %15s (%s):"
-				       " ectp_seq=%d time=%ld us\n", pkt_len,
-					srcmachost, srcmacpbuf,
-					eping_payload.seq_num,
-					tv_diff.tv_usec);
+				printf("%d bytes from %10s (%s):"
+				       " ectp_seq=%d time=%ld.06%ld sec\n",
+				       pkt_len,
+				       srcmachost, srcmacpbuf,
+				       eping_payload.seq_num,
+				       tv_diff.tv_sec,
+				       tv_diff.tv_usec);
 			}
 
 		} else {
-			printf("%d bytes from %s: ectp_seq=%d time=%ld us\n",
-				pkt_len, srcmacpbuf, eping_payload.seq_num,
-				tv_diff.tv_usec);
+			printf("%d bytes from %s: ectp_seq=%d "
+			       "time=%ld.%06ld sec\n",
+			       pkt_len, srcmacpbuf,
+			       eping_payload.seq_num,
+			       tv_diff.tv_sec,
+			       tv_diff.tv_usec);
 		}
 	}
 
