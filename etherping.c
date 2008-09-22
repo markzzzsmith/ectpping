@@ -422,7 +422,10 @@ void sigint_hdlr(int signum)
 
 	pthread_cancel(tx_thread_hdl);
 
-	usleep(100000); /* a chance to catch some in flight pkts */
+	if (rxed_pkts != txed_pkts)
+		usleep(100000); /* 100ms delay to try to catch an in flight
+				 * pkts */
+
 	pthread_cancel(rx_thread_hdl);
 
 	putchar('\n');
