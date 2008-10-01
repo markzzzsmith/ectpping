@@ -53,6 +53,8 @@ struct program_parameters {
 	bool no_resolve;
 	bool zero_pkt_output;
 	unsigned int interval_ms;
+	struct ether_addr *fwdaddrs;
+	unsigned int num_fwdaddrs;
 };
 
 
@@ -66,6 +68,7 @@ struct program_options {
 	bool no_resolve;
 	bool zero_pkt_output;
 	unsigned int interval_ms;
+	char *fwdaddrs_str;
 };
 
 
@@ -138,6 +141,14 @@ enum PROCESS_PROG_OPTS {
 enum PROCESS_PROG_OPTS process_prog_opts(const struct program_options
 						*prog_opts,
 					 struct program_parameters *prog_parms);
+
+enum GET_PROG_OPT_FWDADDRS {
+	GET_PROG_OPT_FWDADDRS_GOOD,
+	GET_PROG_OPT_FWDADDRS_BAD
+};
+enum GET_PROG_OPT_FWDADDRS get_prog_opt_fwdaddrs(const char *fwdaddrs_str,
+			 			 struct ether_addr **fwdaddrs,
+						 unsigned int *num_fwdaddrs);
 
 
 enum DO_IFREQ_IOCTL {
@@ -428,6 +439,9 @@ void sigint_hdlr(int signum)
 
 	pthread_cancel(rx_thread_hdl);
 
+	if (prog_parms.fwdaddrs != NULL)
+		free(prog_parms.fwdaddrs);
+
 	putchar('\n');
 
 	enet_ntop(prog_parms.dstmac, ENET_NTOP_UNIX, dstmacpbuf,
@@ -523,6 +537,8 @@ void set_default_prog_opts(struct program_options *prog_opts)
 
 	prog_opts->interval_ms = 1000;
 
+	prog_opts->fwdaddrs_str = NULL;
+
 }
 
 
@@ -538,7 +554,7 @@ enum GET_CLI_OPTS get_cli_opts(const int argc,
 
 	debug_fn_name(__func__);
 
-	while ( (opt = getopt(argc, argv, "I:bnzi:")) != -1) {
+	while ( (opt = getopt(argc, argv, "I:bnzi:f:")) != -1) {
 		switch (opt) {
 		case 'I':
 			strncpy(prog_opts->iface, optarg, IFNAMSIZ);
@@ -555,6 +571,9 @@ enum GET_CLI_OPTS get_cli_opts(const int argc,
 			break;
 		case 'i':
 			prog_opts->interval_ms = atoi(optarg);
+			break;
+		case 'f':
+			prog_opts->fwdaddrs_str = optarg;
 			break;
 		}
 	}
@@ -628,7 +647,69 @@ enum PROCESS_PROG_OPTS process_prog_opts(const struct program_options
 
 	prog_parms->interval_ms = prog_opts->interval_ms;
 
+	if (prog_opts->fwdaddrs_str != NULL) {
+		printf("%s: %s\n", __func__, prog_opts->fwdaddrs_str);
+		get_prog_opt_fwdaddrs(prog_opts->fwdaddrs_str,
+			&prog_parms->fwdaddrs,
+			&prog_parms->num_fwdaddrs);
+	} else {
+		prog_parms->fwdaddrs = NULL;
+		prog_parms->num_fwdaddrs = 0;
+	}
+
 	return PROCESS_PROG_OPTS_GOOD;
+
+}
+
+
+/*
+ * routine to convert fwdaddr string into an array of mac addresses
+ * n.b. allocates space for the array via calloc if there is at least one
+ * mac address, so free() must be called on *fwdaddrs at some point in the
+ * future
+ */
+enum GET_PROG_OPT_FWDADDRS get_prog_opt_fwdaddrs(const char *fwdaddrs_str,
+						 struct ether_addr **fwdaddrs,
+						 unsigned int *num_fwdaddrs)
+{
+	char fa_str[10][50];
+	struct ether_addr *j;
+	unsigned int i, k;
+
+
+	*fwdaddrs = calloc(10, ETH_ALEN);
+	if (*fwdaddrs == NULL)
+		return GET_PROG_OPT_FWDADDRS_BAD;
+
+	memset(fa_str, 0, sizeof(fa_str));
+
+	sscanf(fwdaddrs_str, "%s %s %s %s %s %s %s %s %s %s", fa_str[0],
+		fa_str[1], fa_str[2], fa_str[3], fa_str[4], fa_str[5],
+		fa_str[6], fa_str[7], fa_str[8], fa_str[9]);
+
+	for (i = 0; i < 10; i++) {
+		printf("%s: fa_str[%d] = %s\n", __func__, i, fa_str[i]);
+	}
+
+	j = *fwdaddrs;
+	k = 0;
+	for (i = 0; i < 10; i++) {
+		if (enet_pton(fa_str[i], (uint8_t *)j) == ENET_PTON_GOOD) {
+			j++;
+			k++;
+		} else {
+			if (ether_hostton(fa_str[i], j) == 0) {
+				j++;
+				k++;
+			}
+		}
+	}
+
+	*num_fwdaddrs = k;
+
+	printf("%s: *num_fwdaddrs = %d\n", __func__, *num_fwdaddrs);
+
+	return GET_PROG_OPT_FWDADDRS_GOOD;
 
 }
 
@@ -780,7 +861,8 @@ enum BUILD_ECTP_FRAME build_ectp_frame(
 	unsigned int ectp_pkt_len;
 	unsigned int frame_payload_size;
 	uint8_t *frame_payload;
-	uint8_t fwdaddrs[3][ETH_ALEN];
+	struct ether_addr *fwdaddrs;
+	unsigned int num_fwdaddrs;
 
 
 	if (sizeof(struct ether_header) > frame_buf_sz)
@@ -804,14 +886,17 @@ enum BUILD_ECTP_FRAME build_ectp_frame(
 	memcpy(&frame_payload[prog_data_size], prog_parms->ectp_user_data,
 		prog_parms->ectp_user_data_size);
 
-	memcpy(fwdaddrs[0], prog_parms->srcmac, ETH_ALEN);
-	memcpy(fwdaddrs[1], prog_parms->dstmac, ETH_ALEN);
-	memcpy(fwdaddrs[2], prog_parms->srcmac, ETH_ALEN);
+	if (prog_parms->num_fwdaddrs) {
+		num_fwdaddrs = prog_parms->num_fwdaddrs;
+		fwdaddrs = prog_parms->fwdaddrs;
+	} else {
+		num_fwdaddrs = 1;
+		fwdaddrs = (struct ether_addr *)prog_parms->srcmac;
+	}
 
-	ectp_build_packet(0, (struct ether_addr *)prog_parms->srcmac,
-	//ectp_build_packet(0, (struct ether_addr *)fwdaddrs,
-		1, getpid(), frame_payload, frame_payload_size,
-		&frame_buf[ETH_HLEN], frame_buf_sz - ETH_HLEN, 0x00);
+	ectp_build_packet(0, fwdaddrs, num_fwdaddrs, getpid(), frame_payload,
+		frame_payload_size, &frame_buf[ETH_HLEN],
+		frame_buf_sz - ETH_HLEN, 0x00);
 
 	*ectp_frame_len = ETH_HLEN + ectp_pkt_len;
 
