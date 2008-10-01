@@ -648,7 +648,6 @@ enum PROCESS_PROG_OPTS process_prog_opts(const struct program_options
 	prog_parms->interval_ms = prog_opts->interval_ms;
 
 	if (prog_opts->fwdaddrs_str != NULL) {
-		printf("%s: %s\n", __func__, prog_opts->fwdaddrs_str);
 		get_prog_opt_fwdaddrs(prog_opts->fwdaddrs_str,
 			&prog_parms->fwdaddrs,
 			&prog_parms->num_fwdaddrs);
@@ -688,7 +687,6 @@ enum GET_PROG_OPT_FWDADDRS get_prog_opt_fwdaddrs(const char *fwdaddrs_str,
 		fa_str[6], fa_str[7], fa_str[8], fa_str[9]);
 
 	for (i = 0; i < 10; i++) {
-		printf("%s: fa_str[%d] = %s\n", __func__, i, fa_str[i]);
 	}
 
 	j = *fwdaddrs;
@@ -706,8 +704,6 @@ enum GET_PROG_OPT_FWDADDRS get_prog_opt_fwdaddrs(const char *fwdaddrs_str,
 	}
 
 	*num_fwdaddrs = k;
-
-	printf("%s: *num_fwdaddrs = %d\n", __func__, *num_fwdaddrs);
 
 	return GET_PROG_OPT_FWDADDRS_GOOD;
 
