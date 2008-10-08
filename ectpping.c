@@ -108,6 +108,8 @@ void debug_fn_name(const char *s);
 
 void setup_sigint_hdlr(struct sigaction *sigint_action);
 
+void print_ethaddr_hostname(const struct ether_addr *ethaddr, bool resolve);
+
 void print_prog_header(const struct program_parameters *prog_parms);
 
 void set_sigint_hdlr(struct sigaction *sigint_action);
@@ -241,8 +243,11 @@ void print_rxed_packet(const struct program_parameters *prog_parms,
 		       const struct timeval *pkt_arrived,
 		       const uint8_t *srcmac,
 		       const unsigned int pkt_len,
+		       const struct ectp_packet *ectp_pkt,
 		       const uint8_t *ectp_data,
 		       const unsigned int ectp_data_size);
+
+void print_ectp_src_rt(const struct ectp_packet *ectp_pkt, bool resolve);
 
 void process_rxed_frames(int *rx_sockfd,
 			 const struct program_parameters *prog_parms);
@@ -381,23 +386,40 @@ void setup_sigint_hdlr(struct sigaction *sigint_action)
 
 
 /*
+ * Print the supplied mac address, and if an entry exists
+ * in /etc/ethers, print that too. Doesn't do any line feeding,
+ * tabbing etc.
+ */
+void print_ethaddr_hostname(const struct ether_addr *ethaddr, bool resolve)
+{
+	char macpbuf[ENET_PADDR_MAXSZ];
+	char machostn[1024]; /* see ether_ntoh.c in glibc for size */
+
+
+	enet_ntop((uint8_t *)ethaddr, ENET_NTOP_UNIX, macpbuf,
+		ENET_PADDR_MAXSZ);
+
+	printf("%s", macpbuf);
+
+	if (resolve && (ether_ntohost(machostn, ethaddr) == 0))
+		printf(" (%s)", machostn);
+
+}
+
+
+/*
  * Print program header text
  */
 void print_prog_header(const struct program_parameters *prog_parms)
 {
-	char dstmacpbuf[ENET_PADDR_MAXSZ];
-	char dstmachost[1024]; /* see ether_ntoh.c in glibc for size */
 
 
-	enet_ntop(prog_parms->dstmac, ENET_NTOP_UNIX, dstmacpbuf,
-		ENET_PADDR_MAXSZ);
+	printf("ECTPPING ");
 
-	if (ether_ntohost(dstmachost, (struct ether_addr *)prog_parms->dstmac)
-		!= 0)
-		strncpy(dstmachost, dstmacpbuf, ENET_PADDR_MAXSZ);
-
-	printf("ETHERPING %s (%s) using %s\n", dstmachost,
-		dstmacpbuf, prog_parms->iface);
+	print_ethaddr_hostname((struct ether_addr *)prog_parms->dstmac,
+		!prog_parms->no_resolve);
+		
+	printf(" using %s\n", prog_parms->iface);
 
 }
 
@@ -425,8 +447,6 @@ void set_sigint_hdlr(struct sigaction *sigint_action)
  */
 void sigint_hdlr(int signum)
 {
-	char dstmacpbuf[ENET_PADDR_MAXSZ];
-	char dstmachost[1024]; /* see ether_ntoh.c in glibc for size */
 
 
 	debug_fn_name(__func__);
@@ -444,14 +464,16 @@ void sigint_hdlr(int signum)
 
 	putchar('\n');
 
-	enet_ntop(prog_parms.dstmac, ENET_NTOP_UNIX, dstmacpbuf,
-			ENET_PADDR_MAXSZ);
+	fflush(NULL);
 
-	if (ether_ntohost(dstmachost, (struct ether_addr *)prog_parms.dstmac)
-			!= 0)
-		strncpy(dstmachost, dstmacpbuf, ENET_PADDR_MAXSZ);
 
-	printf("----%s ETHERPING Statistics----\n", dstmachost);
+	printf("---- ");
+
+	print_ethaddr_hostname((struct ether_addr *)prog_parms.dstmac,
+		!prog_parms.no_resolve);
+
+	printf(" ECTPPING Statistics ----\n");
+
 
 	printf("%d packets transmitted, %d packets received", txed_pkts,
 		rxed_pkts);
@@ -483,6 +505,8 @@ void sigint_hdlr(int signum)
 	} else {
 		putchar('\n');
 	}
+
+	fflush(NULL);
 
 	exit(0);
 
@@ -1070,11 +1094,10 @@ void print_rxed_packet(const struct program_parameters *prog_parms,
 		       const struct timeval *pkt_arrived,
 		       const uint8_t *srcmac,
 		       const unsigned int pkt_len,
+		       const struct ectp_packet *ectp_pkt,
 		       const uint8_t *ectp_data,
 		       const unsigned int ectp_data_size)
 {
-	char srcmacpbuf[ENET_PADDR_MAXSZ];
-	char srcmachost[1024]; /* see ether_ntoh.c in glibc for size */
 	struct etherping_payload eping_payload;
 	struct timeval tv_diff;
 
@@ -1096,39 +1119,47 @@ void print_rxed_packet(const struct program_parameters *prog_parms,
 
 	if (!prog_parms->zero_pkt_output) {
 
-		enet_ntop(srcmac, ENET_NTOP_UNIX, srcmacpbuf, ENET_PADDR_MAXSZ);
+		printf("%d bytes from ", pkt_len);
+				
+		print_ethaddr_hostname((struct ether_addr *)srcmac,
+			!prog_parms->no_resolve);
+				
+		printf(": ectp_seq=%d time=%ld.%06ld sec\n",
+			eping_payload.seq_num,
+			tv_diff.tv_sec,
+			tv_diff.tv_usec);
 
-		if (!prog_parms->no_resolve) {
-			if (ether_ntohost(srcmachost,
-				(struct ether_addr *)srcmac) != 0)
-				sprintf(srcmachost,"(unknown)");
-			if (prog_parms->uc_dstmac) {
-				printf("%d bytes from %s (%s):"
-				       " ectp_seq=%d time=%ld.%06ld sec\n",
-				       pkt_len,
-				       srcmachost, srcmacpbuf,
-				       eping_payload.seq_num,
-				       tv_diff.tv_sec,
-				       tv_diff.tv_usec);
-			} else {
-				printf("%d bytes from %10s (%s):"
-				       " ectp_seq=%d time=%ld.06%ld sec\n",
-				       pkt_len,
-				       srcmachost, srcmacpbuf,
-				       eping_payload.seq_num,
-				       tv_diff.tv_sec,
-				       tv_diff.tv_usec);
-			}
+		if (ectp_get_skipcount(ectp_pkt) > 8)
+			print_ectp_src_rt(ectp_pkt, !prog_parms->no_resolve);
 
-		} else {
-			printf("%d bytes from %s: ectp_seq=%d "
-			       "time=%ld.%06ld sec\n",
-			       pkt_len, srcmacpbuf,
-			       eping_payload.seq_num,
-			       tv_diff.tv_sec,
-			       tv_diff.tv_usec);
-		}
+		fflush(NULL);
+
 	}
+
+}
+
+
+void print_ectp_src_rt(const struct ectp_packet *ectp_pkt, bool resolve)
+{
+	unsigned int skipcount = 0;
+	struct ectp_message *ectp_msg;
+
+
+	ectp_msg = ectp_get_msg_ptr(skipcount, ectp_pkt);
+	while (ectp_get_msg_type(ectp_msg) == ECTP_FWDMSG) {
+
+		printf("\t\t\tfwdaddr: ");
+		
+		print_ethaddr_hostname((struct ether_addr *)ectp_get_fwdaddr(ectp_msg),
+			resolve);
+
+		putchar('\n');
+
+		skipcount += ECTP_FWDMSG_SZ;
+		ectp_msg = ectp_get_msg_ptr(skipcount, ectp_pkt);
+	}
+
+	putchar('\n');
 
 }
 
@@ -1165,7 +1196,9 @@ void process_rxed_frames(int *rx_sockfd,
 			rxed_pkts++;
 
 			print_rxed_packet(prog_parms, &pkt_arrived,
-				srcmac, rxed_pkt_len, ectp_data,
+				srcmac, rxed_pkt_len,
+				(struct ectp_packet *)pkt_buf,
+				ectp_data,
 				ectp_data_size);
 
 		}
