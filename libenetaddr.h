@@ -20,7 +20,7 @@ enum enet_pton_ok {
  * xx:xx:xx:xx:xx:xx or xx-xx-xx-xx-xx-xx format char addresses
  */
 enum enet_pton_ok enet_pton(const char *enet_paddr,
-			    uint8_t enet_addr[ETH_ALEN]);
+			    struct ether_addr *enet_addr);
 
 
 enum enet_ntop_format {
@@ -38,7 +38,7 @@ enum enet_ntop_ok {
 	ENET_NTOP_BADBUFLEN
 };
 
-enum enet_ntop_ok enet_ntop(const uint8_t enet_addr[ETH_ALEN],
+enum enet_ntop_ok enet_ntop(const struct ether_addr *enet_addr,
 			    const enum enet_ntop_format enet_ntop_fmt,
 			    char *buf, const unsigned int buf_size);
 

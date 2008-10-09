@@ -75,7 +75,7 @@ static int hexchar2bin(int i)
  * Ethernet address Presentation to Network function
  */
 enum enet_pton_ok enet_pton(const char *enet_paddr,
-			    uint8_t enet_addr[ETH_ALEN])
+			    struct ether_addr *enet_addr)
 {
 	int i,j;
 	char tmpenet_paddr[ENET_PADDR_MAXSZ];
@@ -118,10 +118,11 @@ enum enet_pton_ok enet_pton(const char *enet_paddr,
 				 * going to convert to is the high order
 				 * four bits of the MAC address octet
 				 */
-				enet_addr[j / 2] =
+				enet_addr->ether_addr_octet[j / 2] =
 					hexchar2bin(tmpenet_paddr[i]) << 4;
 			} else {
-				enet_addr[j / 2] = enet_addr[j / 2] +
+				enet_addr->ether_addr_octet[j / 2] =
+					enet_addr->ether_addr_octet[j / 2] +
 					hexchar2bin(tmpenet_paddr[i]);
 			}
 
@@ -138,7 +139,7 @@ enum enet_pton_ok enet_pton(const char *enet_paddr,
 /*
  * Ethernet address Network to Presentation function
  */
-enum enet_ntop_ok enet_ntop(const uint8_t enet_addr[ETH_ALEN],
+enum enet_ntop_ok enet_ntop(const struct ether_addr *enet_addr,
 			    const enum enet_ntop_format enet_ntop_fmt,
 			    char *buf, const unsigned int buf_size)
 {
@@ -149,79 +150,79 @@ enum enet_ntop_ok enet_ntop(const uint8_t enet_addr[ETH_ALEN],
 		if (buf_size < 18)
 			return ENET_NTOP_BADBUFLEN;
 		snprintf(buf, buf_size, "%02x:%02x:%02x:%02x:%02x:%02x",
-			enet_addr[0],
-			enet_addr[1],
-			enet_addr[2],
-			enet_addr[3],
-			enet_addr[4],
-			enet_addr[5]);
+			enet_addr->ether_addr_octet[0],
+			enet_addr->ether_addr_octet[1],
+			enet_addr->ether_addr_octet[2],
+			enet_addr->ether_addr_octet[3],
+			enet_addr->ether_addr_octet[4],
+			enet_addr->ether_addr_octet[5]);
 		break;
 	case ENET_NTOP_SUNUNIX:
 		if (buf_size < 18)
 			return ENET_NTOP_BADBUFLEN;
 		snprintf(buf, buf_size, "%x:%x:%x:%x:%x:%x",
-			enet_addr[0],
-			enet_addr[1],
-			enet_addr[2],
-			enet_addr[3],
-			enet_addr[4],
-			enet_addr[5]);
+			enet_addr->ether_addr_octet[0],
+			enet_addr->ether_addr_octet[1],
+			enet_addr->ether_addr_octet[2],
+			enet_addr->ether_addr_octet[3],
+			enet_addr->ether_addr_octet[4],
+			enet_addr->ether_addr_octet[5]);
 		break;
 	case ENET_NTOP_CISCO:
 		if (buf_size < 15)
 			return ENET_NTOP_BADBUFLEN;
 		snprintf(buf, buf_size, "%02x%02x.%02x%02x.%02x%02x",
-			enet_addr[0],
-			enet_addr[1],
-			enet_addr[2],
-			enet_addr[3],
-			enet_addr[4],
-			enet_addr[5]);
+			enet_addr->ether_addr_octet[0],
+			enet_addr->ether_addr_octet[1],
+			enet_addr->ether_addr_octet[2],
+			enet_addr->ether_addr_octet[3],
+			enet_addr->ether_addr_octet[4],
+			enet_addr->ether_addr_octet[5]);
 		break;
 	case ENET_NTOP_802CANONLC:
 		if (buf_size < 18)
 			return ENET_NTOP_BADBUFLEN;
 		snprintf(buf, buf_size, "%02x-%02x-%02x-%02x-%02x-%02x",
-			enet_addr[0],
-			enet_addr[1],
-			enet_addr[2],
-			enet_addr[3],
-			enet_addr[4],
-			enet_addr[5]);
+			enet_addr->ether_addr_octet[0],
+			enet_addr->ether_addr_octet[1],
+			enet_addr->ether_addr_octet[2],
+			enet_addr->ether_addr_octet[3],
+			enet_addr->ether_addr_octet[4],
+			enet_addr->ether_addr_octet[5]);
 		break;
 	case ENET_NTOP_PACKED:
 		if (buf_size < 12)
 			return ENET_NTOP_BADBUFLEN;
 		snprintf(buf, buf_size, "%02X%02X%02X%02X%02X%02X",
-			enet_addr[0],
-			enet_addr[1],
-			enet_addr[2],
-			enet_addr[3],
-			enet_addr[4],
-			enet_addr[5]);
+			enet_addr->ether_addr_octet[0],
+			enet_addr->ether_addr_octet[1],
+			enet_addr->ether_addr_octet[2],
+			enet_addr->ether_addr_octet[3],
+			enet_addr->ether_addr_octet[4],
+			enet_addr->ether_addr_octet[5]);
 		break;
 	case ENET_NTOP_PACKEDLC:
 		if (buf_size < 12)
 			return ENET_NTOP_BADBUFLEN;
 		snprintf(buf, buf_size, "%02x%02x%02x%02x%02x%02x",
-			enet_addr[0],
-			enet_addr[1],
-			enet_addr[2],
-			enet_addr[3],
-			enet_addr[4],
-			enet_addr[5]);
+			enet_addr->ether_addr_octet[0],
+			enet_addr->ether_addr_octet[1],
+			enet_addr->ether_addr_octet[2],
+			enet_addr->ether_addr_octet[3],
+			enet_addr->ether_addr_octet[4],
+			enet_addr->ether_addr_octet[5]);
 		break;
 	case ENET_NTOP_802CANON:
 	default:
 		if (buf_size < 18)
 			return ENET_NTOP_BADBUFLEN;
 		snprintf(buf, buf_size, "%02X-%02X-%02X-%02X-%02X-%02X",
-			enet_addr[0],
-			enet_addr[1],
-			enet_addr[2],
-			enet_addr[3],
-			enet_addr[4],
-			enet_addr[5]);
+			enet_addr->ether_addr_octet[0],
+			enet_addr->ether_addr_octet[1],
+			enet_addr->ether_addr_octet[2],
+			enet_addr->ether_addr_octet[3],
+			enet_addr->ether_addr_octet[4],
+			enet_addr->ether_addr_octet[5]);
 		break;
 	}
 

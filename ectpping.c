@@ -45,8 +45,8 @@
 struct program_parameters {
 	char iface[IFNAMSIZ];
 	int ifindex;
-	uint8_t srcmac[ETH_ALEN];
-	uint8_t dstmac[ETH_ALEN];
+	struct ether_addr srcmac;
+	struct ether_addr dstmac;
 	bool uc_dstmac;
 	uint8_t *ectp_user_data;
 	unsigned int ectp_user_data_size;
@@ -177,7 +177,7 @@ enum GET_IFMAC {
 	GET_IFMAC_BADIFACE
 };
 enum GET_IFMAC get_ifmac(const char iface[IFNAMSIZ],
-			 unsigned char ifmac[ETH_ALEN]);
+			 struct ether_addr *ifmac);
 
 
 void open_sockets(int *tx_sockfd, int *rx_sockfd, const int ifindex);
@@ -205,8 +205,8 @@ void prepare_thread_args(struct tx_thread_arguments *tx_thread_args,
 			 int *tx_sockfd,
 			 int *rx_sockfd);
 
-void build_ectp_eth_hdr(const uint8_t *srcmac,
-			const uint8_t *dstmac,
+void build_ectp_eth_hdr(const struct ether_addr *srcmac,
+			const struct ether_addr *dstmac,
 			struct ether_header *eth_hdr);
 
 enum BUILD_ECTP_FRAME {
@@ -241,7 +241,7 @@ enum ECTP_PKT_VALID ectp_pkt_valid(const struct ectp_packet *ectp_pkt,
 
 void print_rxed_packet(const struct program_parameters *prog_parms,
 		       const struct timeval *pkt_arrived,
-		       const uint8_t *srcmac,
+		       const struct ether_addr *srcmac,
 		       const unsigned int pkt_len,
 		       const struct ectp_packet *ectp_pkt,
 		       const uint8_t *ectp_data,
@@ -258,7 +258,7 @@ void rx_new_packet(int *sockfd,
 		  struct timeval *pkt_arrived,
 		  unsigned char *pkt_type,
 		  unsigned int *pkt_len,
-		  uint8_t *srcmac);
+		  struct ether_addr *srcmac);
 
 void close_sockets(int *tx_sockfd, int *rx_sockfd);
 
@@ -401,7 +401,7 @@ void print_ethaddr_hostname(const struct ether_addr *ethaddr, bool resolve)
 	char machostn[1024]; /* see ether_ntoh.c in glibc for size */
 
 
-	enet_ntop((uint8_t *)ethaddr, ENET_NTOP_UNIX, macpbuf,
+	enet_ntop(ethaddr, ENET_NTOP_UNIX, macpbuf,
 		ENET_PADDR_MAXSZ);
 
 	printf("%s", macpbuf);
@@ -421,7 +421,7 @@ void print_prog_header(const struct program_parameters *prog_parms)
 
 	printf("ECTPPING ");
 
-	print_ethaddr_hostname((struct ether_addr *)prog_parms->dstmac,
+	print_ethaddr_hostname(&prog_parms->dstmac,
 		!prog_parms->no_resolve);
 		
 	printf(" using %s\n", prog_parms->iface);
@@ -474,7 +474,7 @@ void sigint_hdlr(int signum)
 
 	printf("---- ");
 
-	print_ethaddr_hostname((struct ether_addr *)prog_parms.dstmac,
+	print_ethaddr_hostname(&prog_parms.dstmac,
 		!prog_parms.no_resolve);
 
 	printf(" ECTPPING Statistics ----\n");
@@ -640,7 +640,7 @@ enum PROCESS_PROG_OPTS process_prog_opts(const struct program_options
 		!= GET_IFINDEX_GOOD)
 			return PROCESS_PROG_OPTS_BAD;
 
-	if (get_ifmac(prog_opts->iface, prog_parms->srcmac)
+	if (get_ifmac(prog_opts->iface, &prog_parms->srcmac)
 		!= GET_IFMAC_GOOD)
 			return PROCESS_PROG_OPTS_BAD;
 
@@ -651,22 +651,25 @@ enum PROCESS_PROG_OPTS process_prog_opts(const struct program_options
 	case ucast:
 		prog_parms->uc_dstmac = true;
 		if (ether_hostton(prog_opts->uc_dst_str,
-			(struct ether_addr *)prog_parms->dstmac) == 0) {
+			&prog_parms->dstmac) == 0) {
 			break;
 		}
-		if (enet_pton(prog_opts->uc_dst_str, prog_parms->dstmac) !=
+		if (enet_pton(prog_opts->uc_dst_str,
+			&prog_parms->dstmac) !=
 			ENET_PTON_GOOD) {
 			return PROCESS_PROG_OPTS_BAD;
 		}
 		break;
 	case bcast:
 		prog_parms->uc_dstmac = false;
-		memcpy(prog_parms->dstmac, bcast_addr, ETH_ALEN);
+		memcpy(&prog_parms->dstmac, bcast_addr,
+			sizeof(struct ether_addr));
 		break;
 	case mcast:
 	default:
 		prog_parms->uc_dstmac = false;
-		memcpy(prog_parms->dstmac, lc_mcaddr, ETH_ALEN);
+		memcpy(&prog_parms->dstmac, lc_mcaddr,
+			sizeof(struct ether_addr));
 		break;
 	}
 
@@ -721,7 +724,7 @@ enum GET_PROG_OPT_FWDADDRS get_prog_opt_fwdaddrs(const char *fwdaddrs_str,
 	j = *fwdaddrs;
 	k = 0;
 	for (i = 0; i < 10; i++) {
-		if (enet_pton(fa_str[i], (uint8_t *)j) == ENET_PTON_GOOD) {
+		if (enet_pton(fa_str[i], j) == ENET_PTON_GOOD) {
 			j++;
 			k++;
 		} else {
@@ -799,7 +802,7 @@ enum GET_IFINDEX get_ifindex(const char iface[IFNAMSIZ], int *ifindex)
  * Routine to get the mac address for an interface
  */
 enum GET_IFMAC get_ifmac(const char iface[IFNAMSIZ],
-			 unsigned char ifmac[ETH_ALEN])
+			 struct ether_addr *ifmac)
 {
 	struct ifreq ifr;
 
@@ -808,7 +811,8 @@ enum GET_IFMAC get_ifmac(const char iface[IFNAMSIZ],
 
 	if (do_ifreq_ioctl(SIOCGIFHWADDR, iface, &ifr) == DO_IFREQ_IOCTL_GOOD) {
 		if (ifr.ifr_hwaddr.sa_family == ARPHRD_ETHER) {
-			memcpy(ifmac, ifr.ifr_hwaddr.sa_data, ETH_ALEN);
+			memcpy(ifmac, ifr.ifr_hwaddr.sa_data,
+				sizeof(struct ether_addr));
 			return GET_IFMAC_GOOD;
 		} else {
 			return GET_IFMAC_BADIFACE;
@@ -861,14 +865,14 @@ void prepare_thread_args(struct tx_thread_arguments *tx_thread_args,
 /*
  * Build the ectp frame ethernet header
  */
-void build_ectp_eth_hdr(const uint8_t *srcmac,
-			const uint8_t *dstmac,
+void build_ectp_eth_hdr(const struct ether_addr *srcmac,
+			const struct ether_addr *dstmac,
 			struct ether_header *eth_hdr)
 {
 
 
-	memcpy(eth_hdr->ether_shost, srcmac, ETH_ALEN);
-	memcpy(eth_hdr->ether_dhost, dstmac, ETH_ALEN);
+	memcpy(eth_hdr->ether_shost, srcmac, sizeof(struct ether_addr));
+	memcpy(eth_hdr->ether_dhost, dstmac, sizeof(struct ether_addr));
 
 	eth_hdr->ether_type = htons(ETHERTYPE_LOOPBACK);
 
@@ -886,14 +890,14 @@ enum BUILD_ECTP_FRAME build_ectp_frame(
 	unsigned int ectp_pkt_len;
 	unsigned int frame_payload_size;
 	uint8_t *frame_payload;
-	struct ether_addr *fwdaddrs;
+	const struct ether_addr *fwdaddrs;
 	unsigned int num_fwdaddrs;
 
 
 	if (sizeof(struct ether_header) > frame_buf_sz)
 		return BUILD_ECTP_FRAME_BADBUFSIZE;
 
-	build_ectp_eth_hdr(prog_parms->srcmac, prog_parms->dstmac,
+	build_ectp_eth_hdr(&prog_parms->srcmac, &prog_parms->dstmac,
 		(struct ether_header *)&frame_buf[0]);
 	
 	frame_payload_size = prog_data_size + prog_parms->ectp_user_data_size;
@@ -916,7 +920,7 @@ enum BUILD_ECTP_FRAME build_ectp_frame(
 		fwdaddrs = prog_parms->fwdaddrs;
 	} else {
 		num_fwdaddrs = 1;
-		fwdaddrs = (struct ether_addr *)prog_parms->srcmac;
+		fwdaddrs = &prog_parms->srcmac;
 	}
 
 	ectp_build_packet(0, fwdaddrs, num_fwdaddrs, getpid(), frame_payload,
@@ -1097,7 +1101,7 @@ enum ECTP_PKT_VALID ectp_pkt_valid(const struct ectp_packet *ectp_pkt,
  */
 void print_rxed_packet(const struct program_parameters *prog_parms,
 		       const struct timeval *pkt_arrived,
-		       const uint8_t *srcmac,
+		       const struct ether_addr *srcmac,
 		       const unsigned int pkt_len,
 		       const struct ectp_packet *ectp_pkt,
 		       const uint8_t *ectp_data,
@@ -1126,7 +1130,7 @@ void print_rxed_packet(const struct program_parameters *prog_parms,
 
 		printf("%d bytes from ", pkt_len);
 				
-		print_ethaddr_hostname((struct ether_addr *)srcmac,
+		print_ethaddr_hostname(srcmac,
 			!prog_parms->no_resolve);
 				
 		printf(": ectp_seq=%d time=%ld.%06ld sec\n",
@@ -1178,7 +1182,7 @@ void process_rxed_frames(int *rx_sockfd,
 	unsigned char pkt_buf[0xffff];
 	unsigned char rxed_pkt_type;
 	unsigned int rxed_pkt_len;
-	uint8_t srcmac[ETH_ALEN];
+	struct ether_addr srcmac;
 	uint8_t *ectp_data;
 	unsigned int ectp_data_size;
 	struct timeval pkt_arrived;
@@ -1191,7 +1195,7 @@ void process_rxed_frames(int *rx_sockfd,
 
 		rx_new_packet(rx_sockfd, pkt_buf, sizeof(pkt_buf),
 			&pkt_arrived, &rxed_pkt_type, &rxed_pkt_len,
-			srcmac);
+			&srcmac);
 
 		if (ectp_pkt_valid((struct ectp_packet *)pkt_buf,
 			rxed_pkt_len, prog_parms, &ectp_data,
@@ -1201,7 +1205,7 @@ void process_rxed_frames(int *rx_sockfd,
 			rxed_pkts++;
 
 			print_rxed_packet(prog_parms, &pkt_arrived,
-				srcmac, rxed_pkt_len,
+				&srcmac, rxed_pkt_len,
 				(struct ectp_packet *)pkt_buf,
 				ectp_data,
 				ectp_data_size);
@@ -1222,7 +1226,7 @@ void rx_new_packet(int *rx_sockfd,
 		  struct timeval *pkt_arrived,
 		  unsigned char *pkt_type,
 		  unsigned int *pkt_len,
-		  uint8_t *srcmac)
+		  struct ether_addr *srcmac)
 {
 	struct sockaddr_ll sa_ll;
 	unsigned int sa_ll_len;
@@ -1240,7 +1244,7 @@ void rx_new_packet(int *rx_sockfd,
 
 	ioctl(*rx_sockfd, SIOCGSTAMP, pkt_arrived);
 
-	memcpy(srcmac, sa_ll.sll_addr, ETH_ALEN);
+	memcpy(srcmac, sa_ll.sll_addr, sizeof(struct ether_addr));
 
 	*pkt_type = sa_ll.sll_pkttype;	
 	
