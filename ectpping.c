@@ -323,6 +323,8 @@ int main(int argc, char *argv[])
 	unsigned char ectp_data[] =
 		__BASE_FILE__ ", built " __TIMESTAMP__ ", using GCC version "
 		__VERSION__;
+	int ret;
+	pthread_attr_t threads_attrs;
 
 
 	debug_fn_name(__func__);
@@ -341,12 +343,15 @@ int main(int argc, char *argv[])
 
 	print_prog_header(&prog_parms);
 
-	pthread_create(&tx_thread_hdl, NULL, (void *)tx_thread,
+	ret = pthread_attr_init(&threads_attrs);
+	ret = pthread_attr_setschedpolicy(&threads_attrs, SCHED_FIFO);
+
+	ret = pthread_create(&tx_thread_hdl, &threads_attrs, (void *)tx_thread,
 		&tx_thread_args);
-	pthread_create(&rx_thread_hdl, NULL, (void *)rx_thread,
+	ret = pthread_create(&rx_thread_hdl, &threads_attrs, (void *)rx_thread,
 		&rx_thread_args);
-	pthread_join(tx_thread_hdl, NULL);
-	pthread_join(rx_thread_hdl, NULL);
+	ret = pthread_join(tx_thread_hdl, NULL);
+	ret = pthread_join(rx_thread_hdl, NULL);
 
 	close_sockets(&tx_sockfd, &rx_sockfd);
 
