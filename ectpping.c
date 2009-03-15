@@ -628,9 +628,10 @@ enum PROCESS_PROG_OPTS process_prog_opts(const struct program_options
 {
 	const uint8_t bcast_addr[ETH_ALEN] = { 0xff, 0xff, 0xff,
 					       0xff, 0xff, 0xff };
-	const uint8_t lc_mcaddr[ETH_ALEN] = ECTP_LA_MCADDR; 
-					    
+	const uint8_t lc_mcaddr[ETH_ALEN] = ECTP_LA_MCADDR;
 
+	
+	
 
 	debug_fn_name(__func__);
 
