@@ -7,9 +7,6 @@
  *
  */
 
-/* #define DEBUG 1 */
-//#define DEBUG 1 
-
 
 #include <stdio.h>
 #include <string.h>
@@ -104,7 +101,6 @@ struct etherping_payload {
  * Function Prototypes
  */
 
-void debug_fn_name(const char *s);
 
 void setup_sigint_hdlr(struct sigaction *sigint_action);
 
@@ -126,15 +122,19 @@ enum GET_PROG_PARMS get_prog_parms(const int argc,
 
 
 void set_default_prog_opts(struct program_options *prog_opts);
-
 enum GET_CLI_OPTS {
 	GET_CLI_OPTS_GOOD,
-	GET_CLI_OPTS_BAD
+	GET_CLI_OPTS_BAD_HELP,
+	GET_CLI_OPTS_BAD_UNKNOWN_OPT,
+	GET_CLI_OPTS_BAD_MISSING_ARG
 };
 enum GET_CLI_OPTS get_cli_opts(const int argc,
 			       char *argv[],
-			       struct program_options *prog_opts);
+			       struct program_options *prog_opts,
+			       int *erropt);
 
+enum GET_CLI_OPTS get_cli_opts_eh(const enum GET_CLI_OPTS ret,
+				  int *erropt);
 
 enum PROCESS_PROG_OPTS {
 	PROCESS_PROG_OPTS_GOOD,
@@ -327,8 +327,6 @@ int main(int argc, char *argv[])
 	pthread_attr_t threads_attrs;
 
 
-	debug_fn_name(__func__);
-
 	get_prog_parms(argc, argv, &prog_parms);
 
 	prog_parms.ectp_user_data = ectp_data;
@@ -361,29 +359,11 @@ int main(int argc, char *argv[])
 
 
 /*
- * Function to print the name of the calling function
- *
- * e.g. debug_fn_name(__func__);
- */
-void debug_fn_name(const char *s)
-{
-
-
-#ifdef DEBUG
-	printf("%s()\n", s);
-#endif
-
-}
-
-
-/*
  * Setup things needed for the sigint handler
  */
 void setup_sigint_hdlr(struct sigaction *sigint_action)
 {
 
-
-	debug_fn_name(__func__);
 
 	set_sigint_hdlr(sigint_action);
 
@@ -436,8 +416,6 @@ void set_sigint_hdlr(struct sigaction *sigint_action)
 {
 
 
-	debug_fn_name(__func__);
-
 	sigint_action->sa_handler = sigint_hdlr;
 	sigemptyset(&(sigint_action->sa_mask));
 	sigint_action->sa_flags = 0;
@@ -453,8 +431,6 @@ void set_sigint_hdlr(struct sigaction *sigint_action)
 void sigint_hdlr(int signum)
 {
 
-
-	debug_fn_name(__func__);
 
 	pthread_cancel(tx_thread_hdl);
 
@@ -527,13 +503,12 @@ enum GET_PROG_PARMS get_prog_parms(const int argc,
 				   struct program_parameters *prog_parms)
 {
 	struct program_options prog_opts;
+	int erropt;
 
-
-	debug_fn_name(__func__);
 
 	set_default_prog_opts(&prog_opts);
 
-	get_cli_opts(argc, argv, &prog_opts);
+	get_cli_opts_eh(get_cli_opts(argc, argv, &prog_opts, &erropt), &erropt);
 
 	process_prog_opts(&prog_opts, prog_parms);
 
@@ -549,8 +524,6 @@ void set_default_prog_opts(struct program_options *prog_opts)
 {
 	char *default_iface = "eth0";
 
-
-	debug_fn_name(__func__);
 
 	memset(prog_opts, 0, sizeof(struct program_options));
 
@@ -576,16 +549,17 @@ void set_default_prog_opts(struct program_options *prog_opts)
  */
 enum GET_CLI_OPTS get_cli_opts(const int argc,
 			       char *argv[],
-			       struct program_options *prog_opts)
+			       struct program_options *prog_opts,
+			       int *erropt)
 {
 	int opt;
 
 
-	debug_fn_name(__func__);
+	opterr = 0;
 
-	while ( (opt = getopt(argc, argv, "I:bnzi:f:")) != -1) {
+	while ((opt = getopt(argc, argv, ":i:bnzI:f:h")) != -1) {
 		switch (opt) {
-		case 'I':
+		case 'i':
 			strncpy(prog_opts->iface, optarg, IFNAMSIZ);
 			prog_opts->iface[IFNAMSIZ-1] = 0;
 			break;
@@ -598,12 +572,22 @@ enum GET_CLI_OPTS get_cli_opts(const int argc,
 		case 'z':
 			prog_opts->zero_pkt_output = true;
 			break;
-		case 'i':
+		case 'I':
 			prog_opts->interval_ms = atoi(optarg);
 			break;
 		case 'f':
 			prog_opts->fwdaddrs_str = optarg;
 			break;
+		case '?':
+			*erropt = optopt;
+			return GET_CLI_OPTS_BAD_UNKNOWN_OPT;
+			break;
+		case ':':
+			*erropt = optopt;
+			return GET_CLI_OPTS_BAD_MISSING_ARG;
+			break;
+		case 'h':
+			return GET_CLI_OPTS_BAD_HELP;
 		}
 	}
 
@@ -614,6 +598,45 @@ enum GET_CLI_OPTS get_cli_opts(const int argc,
 	}
 
 	return GET_CLI_OPTS_GOOD;
+
+}
+
+
+/*
+ * Error handler for get_cli_opts()
+ *
+ */
+enum GET_CLI_OPTS get_cli_opts_eh(const enum GET_CLI_OPTS ret,
+				  int *erropt)
+{
+
+
+	switch (ret) {
+	case GET_CLI_OPTS_BAD_UNKNOWN_OPT:
+		fprintf(stderr, "-%c: Unknown option\n", *erropt);	
+		exit(EXIT_FAILURE);
+		break;
+	case GET_CLI_OPTS_BAD_MISSING_ARG:
+		fprintf(stderr, "-%c: Missing option argument\n", *erropt);	
+		exit(EXIT_FAILURE);
+		break;
+	case GET_CLI_OPTS_BAD_HELP:
+		fprintf(stderr, "ECTPPING command line options\n");
+		fprintf(stderr, "-i <intf>\t: Network interface.\n");
+		fprintf(stderr, "-b\t\t: Use broadcast ECTP packet.\n");
+		fprintf(stderr, "-n\t\t: Don't resolve using /etc/ethers. "
+				"See ethers(5) for details.\n");
+		fprintf(stderr, "-z\t\t: Zero output of per packet "
+					"responses.\n");
+		fprintf(stderr, "-I <ms>\t\t: Milliseconds between packet "
+				"transmits. Default is 1000.\n");
+		fprintf(stderr, "-f \"fwdaddr1 ... fwdaddrN\"\n\t\t: "
+				"List of forward addresses to visit.\n");
+		exit(EXIT_FAILURE);
+		break;
+	default:
+		return ret;
+	}
 
 }
 
@@ -632,8 +655,6 @@ enum PROCESS_PROG_OPTS process_prog_opts(const struct program_options
 
 	
 	
-
-	debug_fn_name(__func__);
 
 	memset(prog_parms, 0, sizeof(struct program_parameters));
 
@@ -755,8 +776,6 @@ enum DO_IFREQ_IOCTL do_ifreq_ioctl(const int ioctl_request,
 
 
 
-	debug_fn_name(__func__);
-
 	sockfd = socket(PF_PACKET, SOCK_DGRAM, 0);
 	if (sockfd == -1)
 		return DO_IFREQ_IOCTL_BADSOCKET;
@@ -787,8 +806,6 @@ enum GET_IFINDEX get_ifindex(const char iface[IFNAMSIZ], int *ifindex)
 	struct ifreq ifr;
 
 
-	debug_fn_name(__func__);
-
 	if (do_ifreq_ioctl(SIOCGIFINDEX, iface, &ifr) == DO_IFREQ_IOCTL_GOOD) {
 		*ifindex = ifr.ifr_ifindex;
 		return GET_IFINDEX_GOOD;
@@ -807,8 +824,6 @@ enum GET_IFMAC get_ifmac(const char iface[IFNAMSIZ],
 {
 	struct ifreq ifr;
 
-
-	debug_fn_name(__func__);
 
 	if (do_ifreq_ioctl(SIOCGIFHWADDR, iface, &ifr) == DO_IFREQ_IOCTL_GOOD) {
 		if (ifr.ifr_hwaddr.sa_family == ARPHRD_ETHER) {
@@ -832,8 +847,6 @@ void open_sockets(int *tx_sockfd, int *rx_sockfd, const int ifindex)
 {
 
 
-	debug_fn_name(__func__);
-
 	open_tx_socket(tx_sockfd, ifindex);
 
 	open_rx_socket(rx_sockfd, ifindex);
@@ -851,8 +864,6 @@ void prepare_thread_args(struct tx_thread_arguments *tx_thread_args,
 			 int *rx_sockfd)
 {
 
-
-	debug_fn_name(__func__);
 
 	tx_thread_args->prog_parms = prog_parms;
 	tx_thread_args->tx_sockfd = tx_sockfd;
@@ -949,8 +960,6 @@ void tx_thread(struct tx_thread_arguments *tx_thread_args)
 	};
 	
 
-	debug_fn_name(__func__);
-
 	while (true) {
 
 		gettimeofday(&eping_payload.tv, NULL);
@@ -981,8 +990,6 @@ void rx_thread(struct rx_thread_arguments *rx_thread_args)
 {
 
 
-	debug_fn_name(__func__);
-
 	process_rxed_frames(rx_thread_args->rx_sockfd,
 		rx_thread_args->prog_parms);
 
@@ -996,8 +1003,6 @@ enum OPEN_TX_SKT open_tx_socket(int *tx_sockfd, const int tx_ifindex)
 {
 	struct sockaddr_ll sa_ll;
 
-
-	debug_fn_name(__func__);
 
 	*tx_sockfd = socket(PF_PACKET, SOCK_RAW, 0);
 	if (*tx_sockfd == -1)
@@ -1023,8 +1028,6 @@ enum OPEN_RX_SKT open_rx_socket(int *rx_sockfd, const int rx_ifindex)
 {
 	struct sockaddr_ll sa_ll;
 
-
-	debug_fn_name(__func__);
 
 	*rx_sockfd = socket(PF_PACKET, SOCK_DGRAM, htons(ETHERTYPE_LOOPBACK));
 	if (*rx_sockfd == -1)
@@ -1057,8 +1060,6 @@ enum ECTP_PKT_VALID ectp_pkt_valid(const struct ectp_packet *ectp_pkt,
 	unsigned int skipcount;
 	struct ectp_message *curr_ectp_msg;
 
-
-	debug_fn_name(__func__);
 
 	if (ectp_pkt_size < ECTP_PACKET_HDR_SZ)
 		return ECTP_PKT_VALID_TOOSMALL;
@@ -1189,9 +1190,6 @@ void process_rxed_frames(int *rx_sockfd,
 	struct timeval pkt_arrived;
 
 
-	debug_fn_name(__func__);
-
-
 	while (true) {
 
 		rx_new_packet(rx_sockfd, pkt_buf, sizeof(pkt_buf),
@@ -1233,8 +1231,6 @@ void rx_new_packet(int *rx_sockfd,
 	unsigned int sa_ll_len;
 
 
-	debug_fn_name(__func__);
-
 	memset(pkt_buf, 0, pkt_buf_sz);
 
 	sa_ll_len = sizeof(sa_ll);
@@ -1259,8 +1255,6 @@ void close_sockets(int *tx_sockfd, int *rx_sockfd)
 {
 
 
-	debug_fn_name(__func__);
-
 	close_tx_socket(tx_sockfd);
 	close_rx_socket(rx_sockfd);
 
@@ -1273,8 +1267,6 @@ void close_sockets(int *tx_sockfd, int *rx_sockfd)
 enum CLOSE_TX_SKT close_tx_socket(int *tx_sockfd)
 {
 
-
-	debug_fn_name(__func__);
 
 	if (close(*tx_sockfd) == -1) 
 		return CLOSE_TX_SKT_BAD;
@@ -1291,8 +1283,6 @@ enum CLOSE_TX_SKT close_tx_socket(int *tx_sockfd)
 enum CLOSE_RX_SKT close_rx_socket(int *rx_sockfd)
 {
 
-
-	debug_fn_name(__func__);
 
 	if (close(*rx_sockfd) == -1) 
 		return CLOSE_RX_SKT_BAD;
