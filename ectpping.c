@@ -622,7 +622,7 @@ enum GET_CLI_OPTS get_cli_opts_eh(const enum GET_CLI_OPTS ret,
 		break;
 	case GET_CLI_OPTS_BAD_HELP:
 		fprintf(stderr, "ECTPPING command line options\n");
-		fprintf(stderr, "-i <intf>\t: Network interface.\n");
+		fprintf(stderr, "-i <intf>\t: Network interface to use.\n");
 		fprintf(stderr, "-b\t\t: Use broadcast ECTP packet.\n");
 		fprintf(stderr, "-n\t\t: Don't resolve using /etc/ethers. "
 				"See ethers(5) for details.\n");
