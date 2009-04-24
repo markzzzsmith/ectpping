@@ -138,11 +138,18 @@ enum GET_CLI_OPTS get_cli_opts_eh(const enum GET_CLI_OPTS ret,
 
 enum PROCESS_PROG_OPTS {
 	PROCESS_PROG_OPTS_GOOD,
+	PROCESS_PROG_OPTS_BAD_IFACE,
+	PROCESS_PROG_OPTS_BAD_IFMAC,
+	PROCESS_PROG_OPTS_BAD_DSTMACFMT,
 	PROCESS_PROG_OPTS_BAD
 };
 enum PROCESS_PROG_OPTS process_prog_opts(const struct program_options
 						*prog_opts,
-					 struct program_parameters *prog_parms);
+					 struct program_parameters *prog_parms,
+					 const char **errmsg);
+
+enum PROCESS_PROG_OPTS process_prog_opts_eh(const enum PROCESS_PROG_OPTS ret,
+					    const char *errmsg);
 
 enum GET_PROG_OPT_FWDADDRS {
 	GET_PROG_OPT_FWDADDRS_GOOD,
@@ -353,7 +360,7 @@ int main(int argc, char *argv[])
 
 	close_sockets(&tx_sockfd, &rx_sockfd);
 
-	return 0;
+	return EXIT_SUCCESS;
 
 }
 
@@ -489,7 +496,7 @@ void sigint_hdlr(int signum)
 
 	fflush(NULL);
 
-	exit(0);
+	exit(EXIT_SUCCESS);
 
 }
 
@@ -504,13 +511,16 @@ enum GET_PROG_PARMS get_prog_parms(const int argc,
 {
 	struct program_options prog_opts;
 	int erropt;
-
+	const char *errmsg;
+	enum PROCESS_PROG_OPTS process_prog_opts_ret;
 
 	set_default_prog_opts(&prog_opts);
 
 	get_cli_opts_eh(get_cli_opts(argc, argv, &prog_opts, &erropt), &erropt);
 
-	process_prog_opts(&prog_opts, prog_parms);
+	process_prog_opts_ret = process_prog_opts(&prog_opts, prog_parms,
+			&errmsg);
+	process_prog_opts_eh(process_prog_opts_ret, errmsg);
 
 	return GET_PROG_PARMS_GOOD;
 
@@ -647,7 +657,8 @@ enum GET_CLI_OPTS get_cli_opts_eh(const enum GET_CLI_OPTS ret,
  */
 enum PROCESS_PROG_OPTS process_prog_opts(const struct program_options
 						*prog_opts,
-					 struct program_parameters *prog_parms)
+					 struct program_parameters *prog_parms,
+					 const char **errmsg)
 {
 	const uint8_t bcast_addr[ETH_ALEN] = { 0xff, 0xff, 0xff,
 					       0xff, 0xff, 0xff };
@@ -659,12 +670,16 @@ enum PROCESS_PROG_OPTS process_prog_opts(const struct program_options
 	memset(prog_parms, 0, sizeof(struct program_parameters));
 
 	if (get_ifindex(prog_opts->iface, &prog_parms->ifindex)
-		!= GET_IFINDEX_GOOD)
-			return PROCESS_PROG_OPTS_BAD;
+		!= GET_IFINDEX_GOOD) {
+		*errmsg = prog_opts->iface;
+		return PROCESS_PROG_OPTS_BAD_IFACE;
+	}
 
 	if (get_ifmac(prog_opts->iface, &prog_parms->srcmac)
-		!= GET_IFMAC_GOOD)
-			return PROCESS_PROG_OPTS_BAD;
+		!= GET_IFMAC_GOOD) {
+		*errmsg = prog_opts->iface;
+		return PROCESS_PROG_OPTS_BAD_IFMAC;
+	}
 
 	strncpy(prog_parms->iface, prog_opts->iface, IFNAMSIZ);
 	prog_parms->iface[IFNAMSIZ-1] = '\0';
@@ -679,7 +694,7 @@ enum PROCESS_PROG_OPTS process_prog_opts(const struct program_options
 		if (enet_pton(prog_opts->uc_dst_str,
 			&prog_parms->dstmac) !=
 			ENET_PTON_GOOD) {
-			return PROCESS_PROG_OPTS_BAD;
+			return PROCESS_PROG_OPTS_BAD_DSTMACFMT;
 		}
 		break;
 	case bcast:
@@ -711,6 +726,35 @@ enum PROCESS_PROG_OPTS process_prog_opts(const struct program_options
 	}
 
 	return PROCESS_PROG_OPTS_GOOD;
+
+}
+
+
+/*
+ * Error handler for process_prog_opts() routine
+ */
+enum PROCESS_PROG_OPTS process_prog_opts_eh(const enum PROCESS_PROG_OPTS ret,
+					    const char *errmsg)
+{
+
+
+	switch (ret) {
+	case PROCESS_PROG_OPTS_BAD_IFACE: 
+		fprintf(stderr, "Unknown interface or interface "
+				"inaccessible (got root?) - %s.\n", errmsg);
+		exit (EXIT_FAILURE);
+		break;
+	case PROCESS_PROG_OPTS_BAD_IFMAC:
+		fprintf(stderr, "Error retrieving interface MAC address.\n");
+		exit (EXIT_FAILURE);
+		break;
+	case PROCESS_PROG_OPTS_BAD_DSTMACFMT:
+		fprintf(stderr, "Bad destination MAC address format.\n");
+		exit (EXIT_FAILURE);
+		break;
+	default:
+		return ret;
+	}
 
 }
 
