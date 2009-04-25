@@ -7,6 +7,7 @@
  *
  */
 
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -29,6 +30,7 @@
 
 #include "libenetaddr.h"
 #include "libectp.h"
+
 
 /*
  * Struct defs
@@ -133,8 +135,6 @@ enum GET_CLI_OPTS get_cli_opts(const int argc,
 
 enum GET_CLI_OPTS get_cli_opts_eh(const enum GET_CLI_OPTS ret,
 				  int *erropt);
-
-void print_help(void);
 
 enum PROCESS_PROG_OPTS {
 	PROCESS_PROG_OPTS_GOOD,
@@ -286,9 +286,6 @@ enum CLOSE_RX_SKT close_rx_socket(int *rx_sockfd);
 /*
  * Global Variables
  */
-
-char ectpping_version[] = "ECTPPING version 0.1, 2009-04-25, by Mark Smith"\
-			  " <markzzzsmith@yahoo.com.au>";
 
 /*
  * tx & rx thread handles
@@ -634,7 +631,17 @@ enum GET_CLI_OPTS get_cli_opts_eh(const enum GET_CLI_OPTS ret,
 		exit(EXIT_FAILURE);
 		break;
 	case GET_CLI_OPTS_BAD_HELP:
-		print_help();
+		fprintf(stderr, "ECTPPING command line options\n");
+		fprintf(stderr, "-i <intf>\t: Network interface to use.\n");
+		fprintf(stderr, "-b\t\t: Use broadcast ECTP packet.\n");
+		fprintf(stderr, "-n\t\t: Don't resolve using /etc/ethers. "
+				"See ethers(5) for details.\n");
+		fprintf(stderr, "-z\t\t: Zero output of per packet "
+					"responses.\n");
+		fprintf(stderr, "-I <ms>\t\t: Milliseconds between packet "
+				"transmits. Default is 1000.\n");
+		fprintf(stderr, "-f \"fwdaddr1 ... fwdaddrN\"\n\t\t: "
+				"List of forward addresses to visit.\n");
 		exit(EXIT_FAILURE);
 		break;
 	default:
@@ -642,43 +649,6 @@ enum GET_CLI_OPTS get_cli_opts_eh(const enum GET_CLI_OPTS ret,
 	}
 
 }
-
-void print_help(void)
-{
-
-
-	fprintf(stderr, "\n%s\n\n", ectpping_version);
-
-	fprintf(stderr, "ectpping [options] [<unicast MAC address>|"
-			"</etc/ethers hostname>]\n\n");
-
-	fprintf(stderr, "ECTPPING options\n");
-	fprintf(stderr, "-i <intf>\t: Network interface to use. Default is "
-			"eth0.\n");
-	fprintf(stderr, "-b\t\t: Use broadcast ECTP packet instead of "
-			"multicast ECTP packet.\n");
-	fprintf(stderr, "-n\t\t: Don't resolve names using /etc/ethers.\n"
-			"\t\t  See ethers(5) for details.\n");
-	fprintf(stderr, "-z\t\t: Zero output of per packet "
-				"responses.\n");
-	fprintf(stderr, "-I <ms>\t\t: Milliseconds between packet "
-			"transmits. Default is 1000.\n");
-	fprintf(stderr, "-f \"fwdaddr1 ... fwdaddrN\"\n\t\t: "
-			"List of up to 10 forward addresses in the ECTP packet.\n");
-	fprintf(stderr, "\t\t  The first forward address specified is not used"
-			" as the first\n");
-	fprintf(stderr, "\t\t  ECTP hop i.e. the destination MAC address in "
-		        "the address \n");
-        fprintf(stderr, "\t\t  the transmitted ECTP packet header. That will need to be\n");
-        fprintf(stderr, "\t\t  specified separately on the command line.\n");
-        fprintf(stderr, "\t\t  To have the ECTP packet follow a complete loop, "
-			"specify this\n");
-       	fprintf(stderr, "\t\t  host's outgoing interface MAC address as the "
-			"last hop.\n");
-
-	fprintf(stderr, "\n");
-
-}	
 
 
 /*
