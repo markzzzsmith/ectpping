@@ -1,5 +1,5 @@
 /*
- *	etherping
+ *	ectpping
  *	~~~~~~~~~
  *
  *
@@ -90,7 +90,7 @@ struct rx_thread_arguments {
 /*
  *
  */
-struct etherping_payload {
+struct ectpping_payload {
 	uint32_t seq_num;
 	struct timeval tv;
 };
@@ -999,7 +999,7 @@ void tx_thread(struct tx_thread_arguments *tx_thread_args)
 {
 	uint8_t tx_frame_buf[0xffff];
 	unsigned int ectp_frame_len;
-	struct etherping_payload eping_payload = {
+	struct ectpping_payload eping_payload = {
 		.seq_num = 0,
 	};
 	
@@ -1010,7 +1010,7 @@ void tx_thread(struct tx_thread_arguments *tx_thread_args)
 
 		build_ectp_frame(tx_thread_args->prog_parms, tx_frame_buf,
 			sizeof(tx_frame_buf), (uint8_t *)&eping_payload,
-			sizeof(struct etherping_payload),
+			sizeof(struct ectpping_payload),
 			&ectp_frame_len);
 
 		send(*tx_thread_args->tx_sockfd, tx_frame_buf, ectp_frame_len,
@@ -1153,11 +1153,11 @@ void print_rxed_packet(const struct program_parameters *prog_parms,
 		       const uint8_t *ectp_data,
 		       const unsigned int ectp_data_size)
 {
-	struct etherping_payload eping_payload;
+	struct ectpping_payload eping_payload;
 	struct timeval tv_diff;
 
 
-	memcpy(&eping_payload, ectp_data, sizeof(struct etherping_payload));
+	memcpy(&eping_payload, ectp_data, sizeof(struct ectpping_payload));
 	timersub(pkt_arrived, &eping_payload.tv, &tv_diff);
 
 	timeradd(&sum_rtts, &tv_diff, &sum_rtts);
