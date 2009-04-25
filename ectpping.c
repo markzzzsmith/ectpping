@@ -38,7 +38,7 @@
  * Program parameters in internal program format
  */
 struct program_parameters {
-	char iface[IFNAMSIZ];
+	char in_iface[IFNAMSIZ];
 	int ifindex;
 	struct ether_addr srcmac;
 	struct ether_addr dstmac;
@@ -57,7 +57,7 @@ struct program_parameters {
  * Program options in external user format
  */
 struct program_options {
-	char iface[IFNAMSIZ];
+	char in_iface[IFNAMSIZ];
 	enum { ucast, mcast, bcast } dst_type;
 	char *uc_dst_str; /* mac address or /etc/ethers hostname string */
 	bool no_resolve;
@@ -414,7 +414,7 @@ void print_prog_header(const struct program_parameters *prog_parms)
 	print_ethaddr_hostname(&prog_parms->dstmac,
 		!prog_parms->no_resolve);
 		
-	printf(" using %s\n", prog_parms->iface);
+	printf(" using %s\n", prog_parms->in_iface);
 
 }
 
@@ -535,14 +535,14 @@ enum GET_PROG_PARMS get_prog_parms(const int argc,
  */ 
 void set_default_prog_opts(struct program_options *prog_opts)
 {
-	char *default_iface = "eth0";
+	char *default_in_iface = "eth0";
 
 
 	memset(prog_opts, 0, sizeof(struct program_options));
 
 	/* default interface */
-	strncpy(prog_opts->iface, default_iface, IFNAMSIZ);
-	prog_opts->iface[IFNAMSIZ-1] = '\0';
+	strncpy(prog_opts->in_iface, default_in_iface, IFNAMSIZ);
+	prog_opts->in_iface[IFNAMSIZ-1] = '\0';
 
 	prog_opts->dst_type = mcast;
 
@@ -573,8 +573,8 @@ enum GET_CLI_OPTS get_cli_opts(const int argc,
 	while ((opt = getopt(argc, argv, ":i:bnzI:f:h")) != -1) {
 		switch (opt) {
 		case 'i':
-			strncpy(prog_opts->iface, optarg, IFNAMSIZ);
-			prog_opts->iface[IFNAMSIZ-1] = 0;
+			strncpy(prog_opts->in_iface, optarg, IFNAMSIZ);
+			prog_opts->in_iface[IFNAMSIZ-1] = 0;
 			break;
 		case 'b':
 			prog_opts->dst_type = bcast;
@@ -699,20 +699,20 @@ enum PROCESS_PROG_OPTS process_prog_opts(const struct program_options
 
 	memset(prog_parms, 0, sizeof(struct program_parameters));
 
-	if (get_ifindex(prog_opts->iface, &prog_parms->ifindex)
+	if (get_ifindex(prog_opts->in_iface, &prog_parms->ifindex)
 		!= GET_IFINDEX_GOOD) {
-		*errmsg = prog_opts->iface;
+		*errmsg = prog_opts->in_iface;
 		return PROCESS_PROG_OPTS_BAD_IFACE;
 	}
 
-	if (get_ifmac(prog_opts->iface, &prog_parms->srcmac)
+	if (get_ifmac(prog_opts->in_iface, &prog_parms->srcmac)
 		!= GET_IFMAC_GOOD) {
-		*errmsg = prog_opts->iface;
+		*errmsg = prog_opts->in_iface;
 		return PROCESS_PROG_OPTS_BAD_IFMAC;
 	}
 
-	strncpy(prog_parms->iface, prog_opts->iface, IFNAMSIZ);
-	prog_parms->iface[IFNAMSIZ-1] = '\0';
+	strncpy(prog_parms->in_iface, prog_opts->in_iface, IFNAMSIZ);
+	prog_parms->in_iface[IFNAMSIZ-1] = '\0';
 
 	switch (prog_opts->dst_type) {
 	case ucast:
