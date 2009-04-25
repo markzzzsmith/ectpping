@@ -784,9 +784,6 @@ enum GET_PROG_OPT_FWDADDRS get_prog_opt_fwdaddrs(const char *fwdaddrs_str,
 		fa_str[1], fa_str[2], fa_str[3], fa_str[4], fa_str[5],
 		fa_str[6], fa_str[7], fa_str[8], fa_str[9]);
 
-	for (i = 0; i < 10; i++) {
-	}
-
 	j = *fwdaddrs;
 	k = 0;
 	for (i = 0; i < 10; i++) {
