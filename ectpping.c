@@ -290,6 +290,13 @@ enum CLOSE_RX_SKT close_rx_socket(int *rx_sockfd);
 char ectpping_version[] = "ECTPPING version 0.1, 2009-04-25, by Mark Smith"\
 			  " <markzzzsmith@yahoo.com.au>";
 
+
+/*
+ * ectpping process id
+ */
+pid_t ectpping_pid;
+
+
 /*
  * tx & rx thread handles
  */
@@ -350,6 +357,8 @@ int main(int argc, char *argv[])
 	setup_sigint_hdlr(&sigint_action);
 
 	print_prog_header(&prog_parms);
+
+	ectpping_pid = getpid();
 
 	ret = pthread_attr_init(&threads_attrs);
 	ret = pthread_attr_setschedpolicy(&threads_attrs, SCHED_FIFO);
@@ -1006,7 +1015,8 @@ enum BUILD_ECTP_FRAME build_ectp_frame(
 		fwdaddrs = &prog_parms->srcmac;
 	}
 
-	ectp_build_packet(0, fwdaddrs, num_fwdaddrs, getpid(), frame_payload,
+	ectp_build_packet(0, fwdaddrs, num_fwdaddrs, ectpping_pid,
+		frame_payload,
 		frame_payload_size, &frame_buf[ETH_HLEN],
 		frame_buf_sz - ETH_HLEN, 0x00);
 
@@ -1157,7 +1167,7 @@ enum ECTP_PKT_VALID ectp_pkt_valid(const struct ectp_packet *ectp_pkt,
 	if (looklen >= ectp_pkt_size)
 		return ECTP_PKT_VALID_TOOSMALL;
 
-	if(ectp_get_rplymsg_rcpt_num(curr_ectp_msg) != getpid())
+	if(ectp_get_rplymsg_rcpt_num(curr_ectp_msg) != ectpping_pid)
 		return ECTP_PKT_VALID_WRONGRCPTNUM;
 
 	*ectp_data_size = ectp_pkt_size - looklen;
