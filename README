@@ -35,3 +35,10 @@ any, be assured they were completely unintentional. Patches to fix problems
 Consequently, it is strongly recommended that, should you choose to install
 it system wide, restrict its use to trusted users, and assign CAP_NET_RAW
 via 'setcap' rather than making the binary setuid root.
+
+To build it:
+
+	make
+
+which should result in an 'ectpping' binary in the current directory.
+
