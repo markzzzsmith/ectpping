@@ -1,0 +1,37 @@
+ECTPPING
+version 0.1
+
+Copyright (C) 2008-2009, Mark Smith <markzzzsmith@yahoo.com.au>
+All rights reserved.
+
+A 'ping' like program for the Ethernet V2.0 Configuration Testing Protocol
+(ECTP). ECTP is an Ethernet layer test procotol, specified in section 8 of
+"The Ethernet", Version 2.0 (1982)". It supports:
+
+	o unicast testing - an ethernet layer "ping". This can include a
+	  strict source route - a list of stations to visit during the test.
+
+	o broadcast or multicast discovery of ECTP "loopback assistants".
+	  The discovered stations can then be used for unicast testing,
+       	  either as unicast test destinations, or as part of the strict
+	  source route.
+
+This program needs to be able to open PF_PACKET sockets for raw packet reading
+and writing. This requires either root priviledges, or more specifically and
+more safely, the CAP_NET_RAW capability.
+
+The CAP_NET_RAW capability can be assigned to the executable using the
+following command:
+
+	setcap cap_net_raw=ep <ectpping binary>
+
+As a note of CAUTION, ectpping has been developed in somewhat of a hurry,
+such that functionality took precendence over security. In other words,
+it might be full of buffer overflow opportunities and other nasty things. It
+probably won't be, but you never know; I certainly don't. If you discover
+any, be assured they were completely unintentional. Patches to fix problems
+(security or otherwise) are most welcome.
+
+Consequently, it is strongly recommended that, should you choose to install
+it system wide, restrict its use to trusted users, and assign CAP_NET_RAW
+via 'setcap' rather than making the binary setuid root.

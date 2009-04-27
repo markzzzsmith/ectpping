@@ -2,7 +2,7 @@
  *	ectpping
  *	~~~~~~~~
  *
- * A 'ping' like program for the Ethernet V2.0 Configuration Testing Protocol
+ * A 'ping' like program for the Ethernet V2.0 Configuration Testing Protocol.
  *
  * Copyright (C) 2008-2009, Mark Smith <markzzzsmith@yahoo.com.au>
  * All rights reserved.
