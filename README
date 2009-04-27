@@ -6,7 +6,8 @@ All rights reserved.
 
 A 'ping' like program for the Ethernet V2.0 Configuration Testing Protocol
 (ECTP). ECTP is an Ethernet layer test procotol, specified in section 8 of
-"The Ethernet", Version 2.0 (1982)". It supports:
+the second version of the Ethernet specification - "The Ethernet",
+Version 2.0 (1982). It supports:
 
 	o unicast testing - an ethernet layer "ping". This can include a
 	  strict source route - a list of stations to visit during the test.
