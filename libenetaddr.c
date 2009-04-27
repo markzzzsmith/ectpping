@@ -1,3 +1,15 @@
+/*
+ * libenetaddr.c - ethernet address handling routines
+ *
+ * Copyright (C) 2008-2009, Mark Smith <markzzzsmith@yahoo.com.au>
+ * All rights reserved.
+ *
+ * Licensed under the GNU General Public Licence (GPL) Version 2 only.
+ * This explicitly does not include later versions, such as revisions of 2 or
+ * Version 3, and later versions.
+ * See the accompanying LICENSE file for full terms and conditions.
+ *
+ */
 
 #include <stdio.h>
 #include <stdint.h>
