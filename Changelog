@@ -1,0 +1,5 @@
+2009-05-09
+
+	* bump version to 0.2
+	* prevent -I option from being used by any user - must have a getuid()
+	  of zero (0) i.e. the root user.
