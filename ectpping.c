@@ -655,8 +655,8 @@ enum GET_CLI_OPTS get_cli_opts_eh(const enum GET_CLI_OPTS ret,
 		exit(EXIT_FAILURE);
 		break;
 	case GET_CLI_OPTS_BAD_NEED_UID_0:
-		fprintf(stderr, "-%c: Need to be root user to use this "
-				"option\n",
+		fprintf(stderr, "-%c: Need to be root user (getuid() == 0) to "
+				"use this option\n",
 			*erropt);	
 		exit(EXIT_FAILURE);
 		break;
@@ -690,6 +690,8 @@ void print_help(void)
 				"responses.\n");
 	fprintf(stderr, "-I <ms>\t\t: Milliseconds between packet "
 			"transmits. Default is 1000.\n");
+	fprintf(stderr, "\t\t  Need to be root i.e. getuid() == 0 to use this "
+			"option.\n");
 	fprintf(stderr, "-f \"fwdaddr1 ... fwdaddrN\"\n\t\t: "
 			"List of up to 10 forward addresses in the ECTP packet.\n");
 	fprintf(stderr, "\t\t  The first forward address specified is not used"
@@ -798,7 +800,8 @@ enum PROCESS_PROG_OPTS process_prog_opts_eh(const enum PROCESS_PROG_OPTS ret,
 	switch (ret) {
 	case PROCESS_PROG_OPTS_BAD_IFACE: 
 		fprintf(stderr, "Unknown interface or interface "
-				"inaccessible (got root?) - %s.\n", errmsg);
+				"inaccessible (got CAP_NET_RAW?) - %s.\n",
+				errmsg);
 		exit (EXIT_FAILURE);
 		break;
 	case PROCESS_PROG_OPTS_BAD_IFMAC:

@@ -2,4 +2,6 @@
 
 	* bump version to 0.2
 	* prevent -I option from being used by any user - must have a getuid()
-	  of zero (0) i.e. the root user.
+	  of zero (0) i.e. the root user. This prevents normal users being
+	  able to use ectpping as a DoS tool, should the binary have been
+	  assigned CAP_NET_RAW via setcap.
