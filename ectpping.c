@@ -131,7 +131,8 @@ enum GET_CLI_OPTS {
 	GET_CLI_OPTS_GOOD,
 	GET_CLI_OPTS_BAD_HELP,
 	GET_CLI_OPTS_BAD_UNKNOWN_OPT,
-	GET_CLI_OPTS_BAD_MISSING_ARG
+	GET_CLI_OPTS_BAD_MISSING_ARG,
+	GET_CLI_OPTS_BAD_NEED_UID_0,
 };
 enum GET_CLI_OPTS get_cli_opts(const int argc,
 			       char *argv[],
@@ -294,7 +295,7 @@ enum CLOSE_RX_SKT close_rx_socket(int *rx_sockfd);
  * Global Variables
  */
 
-char ectpping_version[] = "ECTPPING version 0.1, 2009-04-25, by Mark Smith"\
+char ectpping_version[] = "ECTPPING version 0.2, 2009-05-09, by Mark Smith"\
 			  " <markzzzsmith@yahoo.com.au>";
 
 
@@ -602,6 +603,10 @@ enum GET_CLI_OPTS get_cli_opts(const int argc,
 			prog_opts->zero_pkt_output = true;
 			break;
 		case 'I':
+			if (getuid() != 0) {
+				*erropt = 'I';
+				return GET_CLI_OPTS_BAD_NEED_UID_0;
+			}
 			prog_opts->interval_ms = atoi(optarg);
 			break;
 		case 'f':
@@ -647,6 +652,12 @@ enum GET_CLI_OPTS get_cli_opts_eh(const enum GET_CLI_OPTS ret,
 		break;
 	case GET_CLI_OPTS_BAD_MISSING_ARG:
 		fprintf(stderr, "-%c: Missing option argument\n", *erropt);	
+		exit(EXIT_FAILURE);
+		break;
+	case GET_CLI_OPTS_BAD_NEED_UID_0:
+		fprintf(stderr, "-%c: Need to be root user to use this "
+				"option\n",
+			*erropt);	
 		exit(EXIT_FAILURE);
 		break;
 	case GET_CLI_OPTS_BAD_HELP:
